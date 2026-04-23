@@ -20,5 +20,6 @@ export const playlistRequestSchema = z.object({
     weight: z.number().min(0).max(1).optional(),
     priority: z.string().optional()
   })).min(1),
-  maxVideosPerTopic: z.number().int().min(1).max(10).optional()
+  maxVideosPerTopic: z.number().int().min(1).max(10).optional(),
+  subjectName: z.string().min(3).max(120).optional()
 });

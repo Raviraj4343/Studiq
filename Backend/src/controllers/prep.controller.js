@@ -13,7 +13,11 @@ export const analyzePreparation = asyncHandler(async (req, res) => {
 });
 
 export const generatePlaylist = asyncHandler(async (req, res) => {
-  const result = await buildPlaylist(req.validatedBody.topics, req.validatedBody.maxVideosPerTopic);
+  const result = await buildPlaylist(
+    req.validatedBody.topics,
+    req.validatedBody.maxVideosPerTopic,
+    req.validatedBody.subjectName
+  );
 
   res.status(200).json({
     success: true,

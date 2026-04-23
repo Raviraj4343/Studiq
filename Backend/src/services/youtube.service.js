@@ -24,10 +24,18 @@ const tokenizeTopic = (topic) => normalizeTopicName(topic)
   .map((token) => token.trim())
   .filter((token) => token && token.length >= 3 && !TOPIC_TOKEN_STOPWORDS.has(token));
 
-const buildTopicQueries = (topic) => {
+const normalizeSubjectName = (subjectName) => (subjectName || "")
+  .toLowerCase()
+  .replace(/[^a-z0-9\s]/g, " ")
+  .replace(/\s+/g, " ")
+  .trim();
+
+const buildTopicQueries = (topic, subjectName) => {
   const normalized = normalizeTopicName(topic);
+  const normalizedSubject = normalizeSubjectName(subjectName);
+
   if (!normalized) {
-    return [`${topic} ${YOUTUBE_QUERY_SUFFIX}`];
+    return [`${topic} ${normalizedSubject} ${YOUTUBE_QUERY_SUFFIX}`.trim()];
   }
 
   const canonicalTopic = normalized
@@ -36,10 +44,12 @@ const buildTopicQueries = (topic) => {
     .slice(0, 8)
     .join(" ");
   const queryTopic = canonicalTopic || normalized;
+  const withSubject = normalizedSubject ? `${queryTopic} ${normalizedSubject}` : queryTopic;
 
   const queries = [
-    `"${queryTopic}" ${YOUTUBE_QUERY_SUFFIX}`,
-    `${queryTopic} complete lecture exam prep`
+    `"${queryTopic}" ${normalizedSubject} ${YOUTUBE_QUERY_SUFFIX}`.trim(),
+    `${withSubject} complete lecture exam prep`,
+    `${withSubject} ${YOUTUBE_QUERY_SUFFIX}`
   ];
 
   return [...new Set(queries)];
@@ -149,10 +159,10 @@ const dedupeVideos = (videos) => {
   });
 };
 
-const fallbackVideo = (topic) => ({
+const fallbackVideo = (topic, subjectName) => ({
   title: `${topic} - Suggested learning search`,
   channelTitle: "YouTube Search",
-  url: `https://www.youtube.com/results?search_query=${encodeURIComponent(topic + " " + YOUTUBE_QUERY_SUFFIX)}`,
+  url: `https://www.youtube.com/results?search_query=${encodeURIComponent(`${topic} ${subjectName || ""} ${YOUTUBE_QUERY_SUFFIX}`.trim())}`,
   duration: "Search",
   durationMinutes: 0,
   views: 0,
@@ -196,13 +206,13 @@ const fetchVideoDetails = async (videoIds) => {
   return data.items || [];
 };
 
-export const getVideosForTopic = async (topic, maxResults) => {
+export const getVideosForTopic = async (topic, maxResults, subjectName) => {
   if (!appConfig.youtubeApiKey) {
-    return [fallbackVideo(topic)];
+    return [fallbackVideo(topic, subjectName)];
   }
 
   try {
-    const searchQueries = buildTopicQueries(topic);
+    const searchQueries = buildTopicQueries(topic, subjectName);
     const searchResponses = await Promise.all(
       searchQueries.map((query) => searchYouTubeVideos(query, maxResults))
     );
@@ -230,7 +240,7 @@ export const getVideosForTopic = async (topic, maxResults) => {
 
     const uniqueVideos = dedupeVideos(rawVideos).filter((video) => isTopicRelevant(topic, video));
     if (!uniqueVideos.length) {
-      return [fallbackVideo(topic)];
+      return [fallbackVideo(topic, subjectName)];
     }
 
     const maxViews = Math.max(...uniqueVideos.map((video) => video.views), 0);
@@ -254,11 +264,11 @@ export const getVideosForTopic = async (topic, maxResults) => {
       .sort((a, b) => b.score - a.score)
       .slice(0, maxResults);
   } catch (_error) {
-    return [fallbackVideo(topic)];
+    return [fallbackVideo(topic, subjectName)];
   }
 };
 
-export const buildPlaylist = async (topics, maxVideosPerTopic) => {
+export const buildPlaylist = async (topics, maxVideosPerTopic, subjectName) => {
   const safeMaxVideosPerTopic = Number.isInteger(maxVideosPerTopic) && maxVideosPerTopic > 0
     ? maxVideosPerTopic
     : appConfig.youtubeMaxResults;
@@ -266,7 +276,7 @@ export const buildPlaylist = async (topics, maxVideosPerTopic) => {
   const playlist = await Promise.all(topics.map(async (topic) => ({
     topic: topic.name,
     topicWeight: topic.weight ?? topic.adjustedScore ?? topic.score ?? 0,
-    videos: await getVideosForTopic(topic.name, safeMaxVideosPerTopic)
+    videos: await getVideosForTopic(topic.name, safeMaxVideosPerTopic, subjectName)
   })));
 
   return playlist.sort((a, b) => b.topicWeight - a.topicWeight);
