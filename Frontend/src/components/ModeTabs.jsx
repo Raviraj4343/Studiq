@@ -1,6 +1,6 @@
 export default function ModeTabs({ options, value, onChange }) {
   return (
-    <div className="inline-flex rounded-2xl border border-slate-200 bg-slate-100 p-1 dark:border-slate-800 dark:bg-slate-900">
+    <div className="grid gap-3 md:grid-cols-3">
       {options.map((option) => {
         const isActive = option.id === value;
 
@@ -9,13 +9,16 @@ export default function ModeTabs({ options, value, onChange }) {
             key={option.id}
             type="button"
             onClick={() => onChange(option.id)}
-            className={`min-w-28 rounded-2xl px-4 py-2 text-sm font-medium transition ${
+            className={`rounded-xl border px-4 py-4 text-left transition ${
               isActive
-                ? "bg-white text-slate-900 shadow-soft dark:bg-slate-800 dark:text-white"
-                : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                ? "border-cyan-400 bg-cyan-500/10 text-white shadow-soft"
+                : "border-slate-800 bg-slate-950/40 text-slate-300 hover:border-cyan-500/60 hover:text-white"
             }`}
           >
-            {option.label}
+            <div className="text-sm font-semibold">{option.label}</div>
+            {option.description && (
+              <div className="mt-1 text-sm text-slate-400">{option.description}</div>
+            )}
           </button>
         );
       })}

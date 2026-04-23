@@ -1,15 +1,24 @@
-import { ArrowRight, FileText, ListChecks, Sparkles, Type } from "lucide-react";
+import {
+  ArrowRight,
+  FileQuestion,
+  ListChecks,
+  ScanSearch
+} from "lucide-react";
 
 import DifficultySelector from "../components/DifficultySelector.jsx";
 import FileUploadField from "../components/FileUploadField.jsx";
 import ModeTabs from "../components/ModeTabs.jsx";
-import { DIFFICULTY_OPTIONS, INPUT_MODES } from "../constants/app.constants.js";
+import {
+  DEFAULT_QUESTION_COUNT,
+  DIFFICULTY_OPTIONS,
+  WORKFLOW_OPTIONS
+} from "../constants/app.constants.js";
 import { usePrepFlow } from "../hooks/usePrepFlow.js";
 
-const modeIconMap = {
-  text: Type,
-  topics: ListChecks,
-  pdf: FileText
+const workflowIconMap = {
+  pyq: FileQuestion,
+  syllabus: ScanSearch,
+  topics: ListChecks
 };
 
 export default function HomePage() {
@@ -17,169 +26,193 @@ export default function HomePage() {
     difficulty,
     error,
     form,
-    inputMode,
     isSubmitting,
-    topicPreview,
+    questionCount,
     setDifficulty,
-    setInputMode,
+    setQuestionCount,
+    setWorkflow,
     submit,
-    updateField
+    topicPreview,
+    updateField,
+    workflow
   } = usePrepFlow();
 
-  const ActiveModeIcon = modeIconMap[inputMode];
+  const ActiveIcon = workflowIconMap[workflow];
 
   return (
-    <main className="mx-auto max-w-7xl px-6 py-10">
-      <section className="grid items-start gap-8 lg:grid-cols-[1.1fr_0.9fr]">
-        <div className="space-y-8">
-          <div className="space-y-4">
-            <div className="inline-flex items-center gap-2 rounded-2xl bg-cyan-50 px-3 py-2 text-sm font-medium text-cyan-700 dark:bg-cyan-950/50 dark:text-cyan-300">
-              <Sparkles className="h-4 w-4" />
-              Smarter ranking, playlists, and AI revision support
-            </div>
-            <div>
-              <h1 className="max-w-2xl text-4xl font-semibold tracking-tight text-slate-900 dark:text-white sm:text-5xl">
-                Study the right topics first, not just the loudest ones.
-              </h1>
-              <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600 dark:text-slate-300">
-                Paste a syllabus, upload a PDF, or drop in a topic list. Studiq finds what matters, maps it to learning videos,
-                and gives you a tight revision plan for the final run-up.
-              </p>
-            </div>
-          </div>
+    <main className="mx-auto max-w-6xl px-6 py-10">
+      <section className="page-hero">
+        <div className="max-w-3xl">
+          <div className="eyebrow">Exam prep made simple</div>
+          <h1 className="mt-4 text-4xl font-semibold text-white sm:text-5xl">
+            Analyze PYQs, build syllabus playlists, and study the right topics first.
+          </h1>
+          <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
+            Choose one task, add your file or topic list, and get a clear study output without extra setup.
+          </p>
+        </div>
+      </section>
 
+      <section className="mt-10">
+        <ModeTabs options={WORKFLOW_OPTIONS} value={workflow} onChange={setWorkflow} />
+      </section>
+
+      <section className="mt-8 grid gap-10 lg:grid-cols-[1.2fr_0.8fr]">
+        <div className="space-y-6">
           <div className="panel p-6">
-            <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <p className="text-lg font-semibold">Input Workspace</p>
-                <p className="text-sm text-slate-500 dark:text-slate-400">Choose your source and set the preparation intensity.</p>
+            <div className="flex items-center gap-3">
+              <div className="icon-chip">
+                <ActiveIcon className="h-5 w-5" />
               </div>
-              <ModeTabs options={INPUT_MODES} value={inputMode} onChange={setInputMode} />
+              <div>
+                <p className="text-lg font-semibold text-white">
+                  {workflow === "pyq" && "PYQ Analysis"}
+                  {workflow === "syllabus" && "Syllabus to Playlist"}
+                  {workflow === "topics" && "Topic Playlist"}
+                </p>
+                <p className="text-sm text-slate-400">
+                  {workflow === "pyq" && "Upload a PDF or image of previous year questions, or paste the text."}
+                  {workflow === "syllabus" && "Upload a syllabus image or PDF, or paste syllabus text."}
+                  {workflow === "topics" && "Enter topic names line by line or separated by commas."}
+                </p>
+              </div>
             </div>
 
-            <div className="grid gap-6 lg:grid-cols-[1fr_220px]">
-              <div className="space-y-4">
-                <div className="flex items-center gap-3 text-sm font-medium text-slate-600 dark:text-slate-300">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-800">
-                    <ActiveModeIcon className="h-5 w-5" />
+            <div className="mt-6 space-y-5">
+              {workflow === "pyq" && (
+                <>
+                  <FileUploadField
+                    file={form.pyqFile}
+                    onChange={(file) => updateField("pyqFile", file)}
+                    accept=".pdf,image/*"
+                    title="Upload PYQ PDF or image"
+                    hint="Use a clean scan for better question extraction."
+                  />
+                  <textarea
+                    rows="8"
+                    className="input-base"
+                    placeholder="Or paste PYQ text here"
+                    value={form.pyqText}
+                    onChange={(event) => updateField("pyqText", event.target.value)}
+                  />
+                  <div>
+                    <label htmlFor="questionCount" className="mb-2 block text-sm font-medium text-slate-300">
+                      Number of important questions
+                    </label>
+                    <input
+                      id="questionCount"
+                      type="number"
+                      min="1"
+                      max="30"
+                      className="input-base max-w-xs"
+                      value={questionCount}
+                      onChange={(event) => setQuestionCount(Number(event.target.value) || DEFAULT_QUESTION_COUNT)}
+                    />
                   </div>
-                  {inputMode === "text" && "Paste your syllabus or exam scope"}
-                  {inputMode === "topics" && "Add one topic per line or separate with commas"}
-                  {inputMode === "pdf" && "Upload a PDF and let Studiq extract the text"}
-                </div>
+                </>
+              )}
 
-                {inputMode === "text" && (
+              {workflow === "syllabus" && (
+                <>
+                  <FileUploadField
+                    file={form.syllabusFile}
+                    onChange={(file) => updateField("syllabusFile", file)}
+                    accept=".pdf,image/*"
+                    title="Upload syllabus image or PDF"
+                    hint="A phone photo, screenshot, or PDF all work."
+                  />
+                  <textarea
+                    rows="8"
+                    className="input-base"
+                    placeholder="Or paste syllabus text here"
+                    value={form.syllabusText}
+                    onChange={(event) => updateField("syllabusText", event.target.value)}
+                  />
+                </>
+              )}
+
+              {workflow === "topics" && (
+                <>
                   <textarea
                     rows="12"
-                    className="input-base resize-none"
-                    placeholder="Example: Operating systems, CPU scheduling, deadlocks, memory management..."
-                    value={form.syllabus}
-                    onChange={(event) => updateField("syllabus", event.target.value)}
+                    className="input-base"
+                    placeholder={"DBMS normalization\nCPU scheduling\nDeadlocks"}
+                    value={form.topicsText}
+                    onChange={(event) => updateField("topicsText", event.target.value)}
                   />
-                )}
+                  {!!topicPreview.length && (
+                    <div className="flex flex-wrap gap-2">
+                      {topicPreview.slice(0, 18).map((topic) => (
+                        <span key={topic} className="topic-pill">
+                          {topic}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
 
-                {inputMode === "topics" && (
-                  <>
-                    <textarea
-                      rows="12"
-                      className="input-base resize-none"
-                      placeholder={"Operating systems\nDBMS normalization\nRound robin scheduling"}
-                      value={form.topicsText}
-                      onChange={(event) => updateField("topicsText", event.target.value)}
-                    />
-                    {!!topicPreview.length && (
-                      <div className="panel-muted px-4 py-4">
-                        <p className="mb-3 text-sm font-medium">Topic preview</p>
-                        <div className="flex flex-wrap gap-2">
-                          {topicPreview.slice(0, 12).map((topic) => (
-                            <span
-                              key={topic}
-                              className="rounded-2xl bg-white px-3 py-1 text-sm text-slate-700 dark:bg-slate-950 dark:text-slate-200"
-                            >
-                              {topic}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {inputMode === "pdf" && (
-                  <FileUploadField file={form.pdfFile} onChange={(file) => updateField("pdfFile", file)} />
-                )}
-
-                {error && (
-                  <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300">
-                    {error}
-                  </div>
-                )}
+              <div>
+                <p className="mb-3 text-sm font-medium text-slate-300">Difficulty</p>
+                <DifficultySelector options={DIFFICULTY_OPTIONS} value={difficulty} onChange={setDifficulty} />
               </div>
 
-              <div className="space-y-6">
-                <div>
-                  <p className="mb-3 text-sm font-medium text-slate-600 dark:text-slate-300">Difficulty</p>
-                  <DifficultySelector options={DIFFICULTY_OPTIONS} value={difficulty} onChange={setDifficulty} />
+              {error && (
+                <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+                  {error}
                 </div>
-                <button
-                  type="button"
-                  onClick={submit}
-                  disabled={isSubmitting}
-                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-cyan-500"
-                >
-                  {isSubmitting ? "Analyzing..." : "Build my dashboard"}
-                  <ArrowRight className="h-4 w-4" />
-                </button>
-                <div className="panel-muted p-4">
-                  <p className="text-sm font-medium">What you get</p>
-                  <ul className="mt-3 space-y-2 text-sm text-slate-500 dark:text-slate-400">
-                    <li>Top-priority topics with normalized weights</li>
-                    <li>Ranked learning playlist for each topic</li>
-                    <li>Expected questions and a last-day revision plan</li>
-                  </ul>
-                </div>
-              </div>
+              )}
+
+              <button
+                type="button"
+                onClick={submit}
+                disabled={isSubmitting}
+                className="primary-button w-full"
+              >
+                {isSubmitting ? "Working..." : "Run analysis"}
+                <ArrowRight className="h-4 w-4" />
+              </button>
             </div>
           </div>
         </div>
 
-        <aside className="space-y-6">
-          <div className="panel overflow-hidden p-6">
-            <p className="text-lg font-semibold">Built for daily use</p>
-            <div className="mt-6 space-y-4">
-              {[
-                "Theory subjects lean into concepts first.",
-                "Problem-heavy subjects surface examples before drills.",
-                "Video ranking balances reach, approval, and exam relevance."
-              ].map((item) => (
-                <div key={item} className="rounded-2xl bg-slate-50 px-4 py-4 text-sm text-slate-600 dark:bg-slate-800/70 dark:text-slate-300">
-                  {item}
-                </div>
-              ))}
+        <div className="space-y-8">
+          <section>
+            <h2 className="section-title">What this mode gives you</h2>
+            <div className="mt-4 space-y-3 text-sm text-slate-300">
+              {workflow === "pyq" && (
+                <>
+                  <p>1. Ranked topics pulled from your previous year questions</p>
+                  <p>2. A list of the most expected questions in the count you choose</p>
+                  <p>3. A quick revision plan for the final round</p>
+                </>
+              )}
+              {workflow === "syllabus" && (
+                <>
+                  <p>1. Important syllabus topics ranked by priority</p>
+                  <p>2. YouTube playlist suggestions for each topic</p>
+                  <p>3. A short revision summary to guide your order</p>
+                </>
+              )}
+              {workflow === "topics" && (
+                <>
+                  <p>1. Ranked topic order based on importance</p>
+                  <p>2. YouTube playlists for each topic</p>
+                  <p>3. A cleaner study sequence for your subject list</p>
+                </>
+              )}
             </div>
-          </div>
-          <div className="panel p-6">
-            <p className="text-lg font-semibold">Result preview</p>
-            <div className="mt-6 space-y-4">
-              <div className="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
-                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Top topics</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {["CPU scheduling", "Normalization", "Deadlocks", "Paging"].map((item) => (
-                    <span key={item} className="rounded-2xl bg-cyan-50 px-3 py-1 text-sm text-cyan-700 dark:bg-cyan-950/50 dark:text-cyan-300">
-                      {item}
-                    </span>
-                  ))}
-                </div>
-              </div>
-              <div className="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
-                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">AI insights</p>
-                <p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300">
-                  Expect questions around scheduling trade-offs, normalization forms, and memory-management comparisons.
-                </p>
-              </div>
+          </section>
+
+          <section>
+            <h2 className="section-title">Quick tips</h2>
+            <div className="mt-4 space-y-3 text-sm text-slate-300">
+              <p>Use clear scans for PDFs and images.</p>
+              <p>Keep topic names short and specific.</p>
+              <p>If API keys are missing, Studiq still returns fallback insights and search links.</p>
             </div>
-          </div>
-        </aside>
+          </section>
+        </div>
       </section>
     </main>
   );

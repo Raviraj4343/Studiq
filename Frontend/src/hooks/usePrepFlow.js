@@ -1,9 +1,13 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { SESSION_KEYS } from "../constants/app.constants.js";
+import {
+  DEFAULT_QUESTION_COUNT,
+  DIFFICULTY_PLAYLIST_SIZE,
+  SESSION_KEYS
+} from "../constants/app.constants.js";
 import { analyzePrep, fetchInsights, fetchPlaylist } from "../services/api.js";
-import { extractTextFromPdf } from "../utils/pdf.js";
+import { extractTextFromFile } from "../utils/extractors.js";
 
 const normalizeTopicList = (value) =>
   value
@@ -11,14 +15,43 @@ const normalizeTopicList = (value) =>
     .map((item) => item.trim())
     .filter(Boolean);
 
+const normalizeTopicPayload = (topics) => topics.map((topic) => ({
+  name: topic.name,
+  weight: topic.weight,
+  score: topic.score,
+  adjustedScore: topic.adjustedScore,
+  priority: topic.priority
+}));
+
+const getTextFromInput = async (text, file, emptyMessage) => {
+  const trimmed = text.trim();
+  if (trimmed) {
+    return trimmed;
+  }
+
+  if (!file) {
+    throw new Error(emptyMessage);
+  }
+
+  const extracted = await extractTextFromFile(file);
+  if (!extracted.trim()) {
+    throw new Error("We could not read enough text from that file.");
+  }
+
+  return extracted;
+};
+
 export const usePrepFlow = () => {
   const navigate = useNavigate();
-  const [inputMode, setInputMode] = useState("text");
+  const [workflow, setWorkflow] = useState("pyq");
   const [difficulty, setDifficulty] = useState("medium");
+  const [questionCount, setQuestionCount] = useState(DEFAULT_QUESTION_COUNT);
   const [form, setForm] = useState({
-    syllabus: "",
-    topicsText: "",
-    pdfFile: null
+    pyqFile: null,
+    pyqText: "",
+    syllabusFile: null,
+    syllabusText: "",
+    topicsText: ""
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -34,42 +67,104 @@ export const usePrepFlow = () => {
       setIsSubmitting(true);
       setError("");
 
-      let syllabus = form.syllabus.trim();
-      const topics = inputMode === "topics" ? topicPreview : [];
+      if (workflow === "pyq") {
+        const questionText = await getTextFromInput(
+          form.pyqText,
+          form.pyqFile,
+          "Upload a PYQ file or paste PYQ text."
+        );
 
-      if (inputMode === "pdf") {
-        if (!form.pdfFile) {
-          throw new Error("Upload a PDF before analyzing.");
-        }
-        syllabus = await extractTextFromPdf(form.pdfFile);
+        const analysis = await analyzePrep({
+          questionPapers: [questionText],
+          difficulty,
+          topK: Math.min(Math.max(Math.ceil(questionCount / 2), 5), 30)
+        });
+        const topicPayload = normalizeTopicPayload(analysis.mostImportantTopics);
+        const insights = await fetchInsights({
+          topics: topicPayload.map((topic) => ({ name: topic.name, weight: topic.weight })),
+          questionCount
+        });
+
+        const result = {
+          ...analysis,
+          playlist: [],
+          insights,
+          meta: {
+            workflow,
+            title: "Important Questions from PYQ",
+            description: `Generated from previous year questions with a target of ${questionCount} questions.`
+          }
+        };
+
+        window.sessionStorage.setItem(SESSION_KEYS.RESULTS, JSON.stringify(result));
+        navigate("/dashboard", { state: { result } });
+        return;
       }
 
-      const analyzePayload = {
-        syllabus: inputMode === "text" || inputMode === "pdf" ? syllabus : undefined,
-        topics: inputMode === "topics" ? topics : undefined,
-        difficulty
-      };
+      if (workflow === "syllabus") {
+        const syllabus = await getTextFromInput(
+          form.syllabusText,
+          form.syllabusFile,
+          "Upload a syllabus file or paste syllabus text."
+        );
 
-      const analysis = await analyzePrep(analyzePayload);
-      const topicPayload = analysis.mostImportantTopics.map((topic) => ({
-        name: topic.name,
-        weight: topic.weight,
-        score: topic.score,
-        adjustedScore: topic.adjustedScore,
-        priority: topic.priority
-      }));
+        const analysis = await analyzePrep({
+          syllabus,
+          difficulty
+        });
+        const topicPayload = normalizeTopicPayload(analysis.mostImportantTopics);
+        const [playlist, insights] = await Promise.all([
+          fetchPlaylist({
+            topics: topicPayload,
+            maxVideosPerTopic: DIFFICULTY_PLAYLIST_SIZE[difficulty]
+          }),
+          fetchInsights({
+            topics: topicPayload.map((topic) => ({ name: topic.name, weight: topic.weight })),
+            questionCount: DEFAULT_QUESTION_COUNT
+          })
+        ]);
 
-      const [playlist, insights] = await Promise.all([
-        fetchPlaylist({ topics: topicPayload }),
-        fetchInsights({
-          topics: topicPayload.map((topic) => ({ name: topic.name, weight: topic.weight }))
-        })
-      ]);
+        const result = {
+          ...analysis,
+          playlist,
+          insights,
+          meta: {
+            workflow,
+            title: "Syllabus Playlist",
+            description: `Built from syllabus text with ${difficulty} difficulty videos.`
+          }
+        };
+
+        window.sessionStorage.setItem(SESSION_KEYS.RESULTS, JSON.stringify(result));
+        navigate("/dashboard", { state: { result } });
+        return;
+      }
+
+      const topics = topicPreview;
+      if (!topics.length) {
+        throw new Error("Enter at least one topic name.");
+      }
+
+      const analysis = await analyzePrep({
+        topics,
+        difficulty,
+        topK: Math.min(Math.max(topics.length, 3), 30)
+      });
+      const topicPayload = normalizeTopicPayload(analysis.mostImportantTopics);
+      const playlist = await fetchPlaylist({
+        topics: topicPayload,
+        maxVideosPerTopic: DIFFICULTY_PLAYLIST_SIZE[difficulty]
+      });
 
       const result = {
         ...analysis,
         playlist,
-        insights
+        insights: null,
+        meta: {
+          workflow,
+          title: "Topic Playlist",
+          description: `Playlist built from ${topics.length} topic names.`
+        }
       };
 
       window.sessionStorage.setItem(SESSION_KEYS.RESULTS, JSON.stringify(result));
@@ -85,12 +180,14 @@ export const usePrepFlow = () => {
     difficulty,
     error,
     form,
-    inputMode,
     isSubmitting,
-    topicPreview,
+    questionCount,
     setDifficulty,
-    setInputMode,
+    setQuestionCount,
+    setWorkflow,
     submit,
-    updateField
+    topicPreview,
+    updateField,
+    workflow
   };
 };

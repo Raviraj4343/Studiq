@@ -1,5 +1,5 @@
-import { ArrowLeft, BarChart3, BrainCircuit, Layers3 } from "lucide-react";
-import { useLocation, Link } from "react-router-dom";
+import { ArrowLeft, BarChart3, BookOpenText, ListChecks } from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
 
 import ChartSection from "../components/ChartSection.jsx";
 import EmptyState from "../components/EmptyState.jsx";
@@ -9,14 +9,14 @@ import TopicBadges from "../components/TopicBadges.jsx";
 import { SESSION_KEYS } from "../constants/app.constants.js";
 
 const StatCard = ({ icon: Icon, label, value }) => (
-  <div className="panel p-5">
+  <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
     <div className="flex items-center gap-3">
-      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+      <div className="icon-chip">
         <Icon className="h-5 w-5" />
       </div>
       <div>
-        <p className="text-sm text-slate-500 dark:text-slate-400">{label}</p>
-        <p className="text-xl font-semibold">{value}</p>
+        <p className="text-sm text-slate-400">{label}</p>
+        <p className="text-xl font-semibold text-white">{value}</p>
       </div>
     </div>
   </div>
@@ -32,43 +32,38 @@ export default function ResultsPage() {
   }
 
   return (
-    <main className="mx-auto max-w-7xl px-6 py-10">
-      <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
+    <main className="mx-auto max-w-6xl px-6 py-10">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="mb-3 inline-flex items-center gap-2 rounded-2xl bg-cyan-50 px-3 py-2 text-sm font-medium text-cyan-700 dark:bg-cyan-950/50 dark:text-cyan-300">
-            <BrainCircuit className="h-4 w-4" />
-            {result.summary.subjectType} subject • {result.summary.primaryFocus} first
-          </div>
-          <h1 className="text-3xl font-semibold">Results Dashboard</h1>
-          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{result.summary.strategy}</p>
+          <div className="eyebrow">{result.meta?.title || "Study output"}</div>
+          <h1 className="mt-3 text-3xl font-semibold text-white">Results</h1>
+          <p className="mt-2 max-w-2xl text-sm text-slate-400">
+            {result.meta?.description || result.summary.strategy}
+          </p>
         </div>
-        <Link
-          to="/"
-          className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:-translate-y-0.5 hover:border-cyan-400 hover:text-cyan-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
-        >
+        <Link to="/" className="secondary-button">
           <ArrowLeft className="h-4 w-4" />
-          New analysis
+          Back
         </Link>
       </div>
 
-      <section className="mb-8 grid gap-4 md:grid-cols-3">
+      <section className="mt-8 grid gap-4 md:grid-cols-3">
         <StatCard icon={BarChart3} label="Difficulty" value={result.summary.difficulty} />
-        <StatCard icon={Layers3} label="Priority topics" value={result.summary.totalTopics} />
-        <StatCard icon={BrainCircuit} label="Primary study focus" value={result.summary.primaryFocus} />
+        <StatCard icon={ListChecks} label="Priority topics" value={result.summary.totalTopics} />
+        <StatCard icon={BookOpenText} label="Focus" value={result.summary.primaryFocus} />
       </section>
 
-      <section className="panel mb-8 p-6">
-        <div className="mb-4">
-          <p className="text-lg font-semibold">Top Topics</p>
-          <p className="text-sm text-slate-500 dark:text-slate-400">The five strongest areas to hit first.</p>
+      <section className="mt-8">
+        <h2 className="section-title">Top topics</h2>
+        <div className="mt-4">
+          <TopicBadges topics={result.mostImportantTopics.slice(0, 10)} />
         </div>
-        <TopicBadges topics={result.mostImportantTopics.slice(0, 5)} />
       </section>
 
-      <div className="space-y-8">
+      <div className="mt-8 space-y-8">
         <ChartSection chartData={result.chartData} />
-        <PlaylistSection playlist={result.playlist} />
-        <InsightsSection insights={result.insights} />
+        {!!result.playlist?.length && <PlaylistSection playlist={result.playlist} />}
+        {!!result.insights && <InsightsSection insights={result.insights} />}
       </div>
     </main>
   );

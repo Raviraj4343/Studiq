@@ -9,10 +9,10 @@ export default function DifficultySelector({ options, value, onChange }) {
             key={option.id}
             type="button"
             onClick={() => onChange(option.id)}
-            className={`rounded-2xl px-4 py-2 text-sm font-medium transition ${
+            className={`rounded-xl border px-4 py-2.5 text-sm font-medium transition ${
               isActive
-                ? "bg-cyan-500 text-white shadow-soft"
-                : "border border-slate-200 bg-white text-slate-600 hover:-translate-y-0.5 hover:border-cyan-400 hover:text-cyan-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
+                ? "border-cyan-400 bg-cyan-500 text-white shadow-soft"
+                : "border-slate-800 bg-slate-950/50 text-slate-300 hover:border-cyan-500/60 hover:text-white"
             }`}
           >
             {option.label}
