@@ -15,6 +15,100 @@ const normalizeTopicList = (value) =>
     .map((item) => item.trim())
     .filter(Boolean);
 
+const TOPIC_TEXT_NOISE = new Set([
+  "syllabus",
+  "unit",
+  "module",
+  "course",
+  "subject",
+  "semester",
+  "credits",
+  "total",
+  "hours"
+]);
+
+const normalizeTopicCandidate = (value) => value
+  .toLowerCase()
+  .replace(/[^a-z0-9\s]/g, " ")
+  .replace(/\s+/g, " ")
+  .trim();
+
+const extractTopicsFromTextParts = (textParts, limit = 12) => {
+  if (!Array.isArray(textParts) || !textParts.length) {
+    return [];
+  }
+
+  const seen = new Set();
+  const extracted = [];
+
+  const pushTopic = (candidate) => {
+    const normalized = normalizeTopicCandidate(candidate);
+    if (!normalized || normalized.length < 4 || normalized.length > 70) {
+      return;
+    }
+
+    const tokens = normalized.split(" ").filter(Boolean);
+    if (!tokens.length || tokens.length > 8) {
+      return;
+    }
+    if (tokens.every((token) => TOPIC_TEXT_NOISE.has(token))) {
+      return;
+    }
+
+    const key = tokens.join(" ");
+    if (seen.has(key)) {
+      return;
+    }
+
+    seen.add(key);
+    extracted.push(tokens.map((token) => token[0].toUpperCase() + token.slice(1)).join(" "));
+  };
+
+  for (const part of textParts) {
+    const lines = part
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length >= 4);
+
+    for (const line of lines) {
+      const splitItems = line.split(/[,:;|]/).map((item) => item.trim()).filter(Boolean);
+      if (!splitItems.length) {
+        continue;
+      }
+
+      splitItems.forEach(pushTopic);
+      if (extracted.length >= limit) {
+        return extracted;
+      }
+    }
+  }
+
+  return extracted;
+};
+
+const mergeTopicPayloadWithExtractedTopics = (topicPayload, extractedTopics) => {
+  const merged = [...topicPayload];
+  const existing = new Set(topicPayload.map((topic) => normalizeTopicCandidate(topic.name)));
+
+  for (const topicName of extractedTopics) {
+    const normalized = normalizeTopicCandidate(topicName);
+    if (!normalized || existing.has(normalized)) {
+      continue;
+    }
+
+    existing.add(normalized);
+    merged.push({
+      name: topicName,
+      weight: 0.25,
+      score: 0.25,
+      adjustedScore: 0.25,
+      priority: "medium"
+    });
+  }
+
+  return merged;
+};
+
 const normalizeTopicPayload = (topics) => topics.map((topic) => ({
   name: topic.name,
   weight: topic.weight,
@@ -125,9 +219,11 @@ export const usePrepFlow = () => {
           difficulty
         });
         const topicPayload = normalizeTopicPayload(analysis.mostImportantTopics);
+        const extractedTopics = extractTopicsFromTextParts(syllabusInput.textParts, 12);
+        const playlistTopicPayload = mergeTopicPayloadWithExtractedTopics(topicPayload, extractedTopics);
         const [playlist, insights] = await Promise.all([
           fetchPlaylist({
-            topics: topicPayload,
+            topics: playlistTopicPayload,
             maxVideosPerTopic: DIFFICULTY_PLAYLIST_SIZE[difficulty]
           }),
           fetchInsights({

@@ -10,6 +10,7 @@ import {
   XAxis,
   YAxis
 } from "recharts";
+import { useEffect, useMemo, useState } from "react";
 
 const PIE_COLORS = ["#22d3ee", "#06b6d4", "#0891b2", "#155e75", "#67e8f9"];
 
@@ -41,10 +42,34 @@ function CustomTooltip({ active, payload, label }) {
 }
 
 export default function ChartSection({ chartData }) {
+  const [isSmallScreen, setIsSmallScreen] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 640px)");
+    const update = () => setIsSmallScreen(mediaQuery.matches);
+
+    update();
+    mediaQuery.addEventListener("change", update);
+
+    return () => mediaQuery.removeEventListener("change", update);
+  }, []);
+
   const pieData = chartData.labels.map((label, index) => ({
     name: label,
     value: chartData.values[index]
   }));
+
+  const xAxisInterval = useMemo(() => {
+    const totalTopics = pieData.length;
+    if (!totalTopics) {
+      return 0;
+    }
+
+    const targetVisibleTicks = isSmallScreen ? 4 : 7;
+    const calculatedInterval = Math.ceil(totalTopics / targetVisibleTicks) - 1;
+
+    return Math.max(0, calculatedInterval);
+  }, [isSmallScreen, pieData.length]);
 
   return (
     <section className="grid gap-6 xl:grid-cols-[1.45fr_0.95fr]">
@@ -55,16 +80,16 @@ export default function ChartSection({ chartData }) {
         </div>
         <div className="h-[320px] sm:h-80">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={pieData} margin={{ top: 8, right: 8, left: -20, bottom: 36 }}>
+            <BarChart data={pieData} margin={{ top: 8, right: 8, left: -20, bottom: isSmallScreen ? 64 : 42 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
               <XAxis
                 dataKey="name"
                 tick={{ fontSize: 12, fill: "#cbd5e1" }}
                 tickFormatter={formatAxisLabel}
-                angle={-18}
+                angle={isSmallScreen ? -35 : -18}
                 textAnchor="end"
-                height={72}
-                interval={0}
+                height={isSmallScreen ? 92 : 72}
+                interval={xAxisInterval}
                 tickMargin={10}
               />
               <YAxis
