@@ -32,11 +32,11 @@ export default function ResultsPage() {
   }
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-10">
+    <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="eyebrow">{result.meta?.title || "Study output"}</div>
-          <h1 className="mt-3 text-3xl font-semibold text-white">Results</h1>
+          <h1 className="mt-3 text-2xl font-semibold text-white sm:text-3xl">Results</h1>
           <p className="mt-2 max-w-2xl text-sm text-slate-400">
             {result.meta?.description || result.summary.strategy}
           </p>
@@ -47,13 +47,13 @@ export default function ResultsPage() {
         </Link>
       </div>
 
-      <section className="mt-8 grid gap-4 md:grid-cols-3">
+      <section className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <StatCard icon={BarChart3} label="Difficulty" value={result.summary.difficulty} />
         <StatCard icon={ListChecks} label="Priority topics" value={result.summary.totalTopics} />
         <StatCard icon={BookOpenText} label="Focus" value={result.summary.primaryFocus} />
       </section>
 
-      <section className="mt-8">
+      <section className="mt-8 scroll-mt-24">
         <h2 className="section-title">Top topics</h2>
         <div className="mt-4">
           <TopicBadges topics={result.mostImportantTopics.slice(0, 10)} />

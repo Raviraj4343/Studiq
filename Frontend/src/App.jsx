@@ -8,12 +8,12 @@ import logo from "./logo/Studiq_logo.png";
 
 const Header = ({ theme, toggleTheme }) => (
   <header className="sticky top-0 z-20 border-b border-slate-800/80 bg-slate-950/85 backdrop-blur">
-    <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+    <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6 sm:py-4">
       <div className="flex items-center gap-3">
-        <img src={logo} alt="Studiq" className="h-12 w-12 rounded-xl object-cover" />
+        <img src={logo} alt="Studiq" className="h-10 w-10 rounded-xl object-cover sm:h-12 sm:w-12" />
         <div>
-          <p className="text-lg font-semibold text-white">Studiq</p>
-          <p className="text-sm text-slate-400">Exam prep workspace</p>
+          <p className="text-base font-semibold text-white sm:text-lg">Studiq</p>
+          <p className="text-xs text-slate-400 sm:text-sm">Exam prep workspace</p>
         </div>
       </div>
       <button
