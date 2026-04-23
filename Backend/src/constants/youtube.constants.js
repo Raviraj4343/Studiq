@@ -11,9 +11,9 @@ export const VIDEO_DURATION_PREFERENCE = {
 };
 
 export const VIDEO_SCORE_WEIGHTS = {
-  views: 0.5,
-  likes: 0.3,
-  relevance: 0.2
+  views: 0.3,
+  likes: 0.2,
+  relevance: 0.5
 };
 
 export const YOUTUBE_RANKING = {

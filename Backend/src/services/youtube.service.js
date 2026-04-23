@@ -9,6 +9,42 @@ import {
   YOUTUBE_RANKING
 } from "../constants/youtube.constants.js";
 
+const TOPIC_TOKEN_STOPWORDS = new Set([
+  "and", "for", "with", "the", "from", "into", "using", "based", "introduction", "intro"
+]);
+
+const normalizeTopicName = (topic) => topic
+  .toLowerCase()
+  .replace(/[^a-z0-9\s]/g, " ")
+  .replace(/\s+/g, " ")
+  .trim();
+
+const tokenizeTopic = (topic) => normalizeTopicName(topic)
+  .split(" ")
+  .map((token) => token.trim())
+  .filter((token) => token && token.length >= 3 && !TOPIC_TOKEN_STOPWORDS.has(token));
+
+const buildTopicQueries = (topic) => {
+  const normalized = normalizeTopicName(topic);
+  if (!normalized) {
+    return [`${topic} ${YOUTUBE_QUERY_SUFFIX}`];
+  }
+
+  const canonicalTopic = normalized
+    .split(" ")
+    .filter((token) => token.length >= 3)
+    .slice(0, 8)
+    .join(" ");
+  const queryTopic = canonicalTopic || normalized;
+
+  const queries = [
+    `"${queryTopic}" ${YOUTUBE_QUERY_SUFFIX}`,
+    `${queryTopic} complete lecture exam prep`
+  ];
+
+  return [...new Set(queries)];
+};
+
 const parseDurationToMinutes = (duration) => {
   const match = duration?.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
 
@@ -31,23 +67,78 @@ const normalizeMetric = (value, maxValue) => {
   return value / maxValue;
 };
 
+const computeTopicCoverage = (topic, video) => {
+  const tokens = tokenizeTopic(topic);
+  const normalizedTopic = normalizeTopicName(topic);
+  const title = (video.title || "").toLowerCase();
+  const description = (video.description || "").toLowerCase();
+  const haystack = `${title} ${description}`;
+
+  if (!tokens.length) {
+    return {
+      exactPhraseMatch: normalizedTopic.length >= 3 && haystack.includes(normalizedTopic),
+      tokenCoverage: 0,
+      titleCoverage: 0,
+      descriptionCoverage: 0
+    };
+  }
+
+  const titleMatches = tokens.filter((token) => title.includes(token)).length;
+  const descriptionMatches = tokens.filter((token) => description.includes(token)).length;
+  const uniqueMatchedTokens = tokens.filter((token) => haystack.includes(token)).length;
+
+  return {
+    exactPhraseMatch: normalizedTopic.length >= 3 && haystack.includes(normalizedTopic),
+    tokenCoverage: uniqueMatchedTokens / tokens.length,
+    titleCoverage: titleMatches / tokens.length,
+    descriptionCoverage: descriptionMatches / tokens.length
+  };
+};
+
+const isTopicRelevant = (topic, video) => {
+  const tokens = tokenizeTopic(topic);
+  const coverage = computeTopicCoverage(topic, video);
+
+  if (coverage.exactPhraseMatch) {
+    return true;
+  }
+
+  if (!tokens.length) {
+    return false;
+  }
+
+  if (tokens.length === 1) {
+    return coverage.titleCoverage >= 1 || coverage.descriptionCoverage >= 1;
+  }
+
+  return coverage.titleCoverage >= 0.5 || coverage.tokenCoverage >= 0.6;
+};
+
 const scoreRelevance = (topic, video) => {
-  const topicTokens = topic.toLowerCase().split(/\s+/).filter(Boolean);
-  const haystack = `${video.title} ${video.description}`.toLowerCase();
-  const matches = topicTokens.filter((token) => haystack.includes(token)).length;
-  const baseScore = topicTokens.length ? matches / topicTokens.length : 0;
+  const {
+    exactPhraseMatch,
+    tokenCoverage,
+    titleCoverage,
+    descriptionCoverage
+  } = computeTopicCoverage(topic, video);
+  const baseScore = (
+    titleCoverage * 0.55 +
+    descriptionCoverage * 0.2 +
+    tokenCoverage * 0.15 +
+    (exactPhraseMatch ? 0.1 : 0)
+  );
   const durationBonus = video.durationMinutes >= VIDEO_DURATION_PREFERENCE.minMinutes &&
     video.durationMinutes <= VIDEO_DURATION_PREFERENCE.maxMinutes ? 1 : 0.4;
 
-  return Number((baseScore * 0.8 + durationBonus * 0.2).toFixed(3));
+  return Number((baseScore * 0.9 + durationBonus * 0.1).toFixed(3));
 };
 
 const dedupeVideos = (videos) => {
   const seen = new Set();
 
   return videos.filter((video) => {
-    const titleKey = video.title.toLowerCase().slice(0, YOUTUBE_RANKING.duplicateTitleLength);
-    const key = `${video.videoId}:${titleKey}`;
+    const titleKey = (video.title || "").toLowerCase().slice(0, YOUTUBE_RANKING.duplicateTitleLength);
+    const key = video.videoId || `${titleKey}:${video.channelTitle}`;
 
     if (seen.has(key)) {
       return false;
@@ -70,6 +161,23 @@ const fallbackVideo = (topic) => ({
   score: 0.5,
   topicTag: topic
 });
+
+const searchYouTubeVideos = async (query, maxResults) => {
+  const { data } = await axios.get(YOUTUBE_API.SEARCH_URL, {
+    params: {
+      key: appConfig.youtubeApiKey,
+      part: "snippet",
+      q: query,
+      type: "video",
+      maxResults: Math.min(maxResults * YOUTUBE_RANKING.searchResultMultiplier, 10),
+      videoEmbeddable: true,
+      safeSearch: "strict"
+    },
+    timeout: 12000
+  });
+
+  return data.items || [];
+};
 
 const fetchVideoDetails = async (videoIds) => {
   if (!videoIds.length) {
@@ -94,20 +202,11 @@ export const getVideosForTopic = async (topic, maxResults) => {
   }
 
   try {
-    const { data } = await axios.get(YOUTUBE_API.SEARCH_URL, {
-      params: {
-        key: appConfig.youtubeApiKey,
-        part: "snippet",
-        q: `${topic} ${YOUTUBE_QUERY_SUFFIX}`,
-        type: "video",
-        maxResults: Math.min(maxResults * YOUTUBE_RANKING.searchResultMultiplier, 10),
-        videoEmbeddable: true,
-        safeSearch: "strict"
-      },
-      timeout: 12000
-    });
-
-    const searchItems = data.items || [];
+    const searchQueries = buildTopicQueries(topic);
+    const searchResponses = await Promise.all(
+      searchQueries.map((query) => searchYouTubeVideos(query, maxResults))
+    );
+    const searchItems = searchResponses.flat();
     const videoIds = searchItems.map((item) => item.id.videoId).filter(Boolean);
     const details = await fetchVideoDetails(videoIds);
     const detailsMap = new Map(details.map((item) => [item.id, item]));
@@ -129,7 +228,11 @@ export const getVideosForTopic = async (topic, maxResults) => {
       };
     });
 
-    const uniqueVideos = dedupeVideos(rawVideos);
+    const uniqueVideos = dedupeVideos(rawVideos).filter((video) => isTopicRelevant(topic, video));
+    if (!uniqueVideos.length) {
+      return [fallbackVideo(topic)];
+    }
+
     const maxViews = Math.max(...uniqueVideos.map((video) => video.views), 0);
     const maxLikes = Math.max(...uniqueVideos.map((video) => video.likes), 0);
 
