@@ -31,6 +31,9 @@ export default function ResultsPage() {
     return <EmptyState />;
   }
 
+  const isPyqWorkflow = result.meta?.workflow === "pyq";
+  const pyqEvidence = result.insights?.evidence;
+
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -47,24 +50,42 @@ export default function ResultsPage() {
         </Link>
       </div>
 
-      <section className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <StatCard icon={BarChart3} label="Difficulty" value={result.summary.difficulty} />
-        <StatCard icon={ListChecks} label="Priority topics" value={result.summary.totalTopics} />
-        <StatCard icon={BookOpenText} label="Focus" value={result.summary.primaryFocus} />
-      </section>
+      {isPyqWorkflow ? (
+        <>
+          <section className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <StatCard icon={BarChart3} label="Questions requested" value={result.meta?.questionCount || result.insights?.expectedQuestions?.length || 0} />
+            <StatCard icon={ListChecks} label="Repeated question groups" value={pyqEvidence?.repeatedQuestionCount || 0} />
+            <StatCard icon={BookOpenText} label="Questions scanned" value={pyqEvidence?.totalQuestionCandidates || 0} />
+          </section>
 
-      <section className="mt-8 scroll-mt-24">
-        <h2 className="section-title">Top topics</h2>
-        <div className="mt-4">
-          <TopicBadges topics={result.mostImportantTopics.slice(0, 10)} />
-        </div>
-      </section>
+          {!!result.insights && (
+            <div className="mt-8">
+              <InsightsSection insights={result.insights} mode="pyq" />
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <section className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <StatCard icon={BarChart3} label="Difficulty" value={result.summary.difficulty} />
+            <StatCard icon={ListChecks} label="Priority topics" value={result.summary.totalTopics} />
+            <StatCard icon={BookOpenText} label="Focus" value={result.summary.primaryFocus} />
+          </section>
 
-      <div className="mt-8 space-y-8">
-        <ChartSection chartData={result.chartData} />
-        {!!result.playlist?.length && <PlaylistSection playlist={result.playlist} />}
-        {!!result.insights && <InsightsSection insights={result.insights} />}
-      </div>
+          <section className="mt-8 scroll-mt-24">
+            <h2 className="section-title">Top topics</h2>
+            <div className="mt-4">
+              <TopicBadges topics={result.mostImportantTopics.slice(0, 10)} />
+            </div>
+          </section>
+
+          <div className="mt-8 space-y-8">
+            <ChartSection chartData={result.chartData} />
+            {!!result.playlist?.length && <PlaylistSection playlist={result.playlist} />}
+            {!!result.insights && <InsightsSection insights={result.insights} />}
+          </div>
+        </>
+      )}
     </main>
   );
 }

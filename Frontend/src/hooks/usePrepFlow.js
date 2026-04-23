@@ -79,10 +79,11 @@ export const usePrepFlow = () => {
           difficulty,
           topK: Math.min(Math.max(Math.ceil(questionCount / 2), 5), 30)
         });
-        const topicPayload = normalizeTopicPayload(analysis.mostImportantTopics);
         const insights = await fetchInsights({
-          topics: topicPayload.map((topic) => ({ name: topic.name, weight: topic.weight })),
-          questionCount
+          topics: normalizeTopicPayload(analysis.mostImportantTopics).map((topic) => ({ name: topic.name, weight: topic.weight })),
+          questionCount,
+          questionPapers: [questionText],
+          workflow: "pyq"
         });
 
         const result = {
@@ -92,7 +93,8 @@ export const usePrepFlow = () => {
           meta: {
             workflow,
             title: "Important Questions from PYQ",
-            description: `Generated from previous year questions with a target of ${questionCount} questions.`
+            description: `Picked from repeated and most expected questions found in your submitted PYQs.`,
+            questionCount
           }
         };
 
