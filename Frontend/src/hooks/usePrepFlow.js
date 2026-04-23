@@ -23,22 +23,32 @@ const normalizeTopicPayload = (topics) => topics.map((topic) => ({
   priority: topic.priority
 }));
 
-const getTextFromInput = async (text, file, emptyMessage) => {
+const getTextsFromInput = async (text, files, emptyMessage) => {
   const trimmed = text.trim();
-  if (trimmed) {
-    return trimmed;
-  }
 
-  if (!file) {
+  const selectedFiles = Array.isArray(files) ? files : [];
+  if (!trimmed && !selectedFiles.length) {
     throw new Error(emptyMessage);
   }
 
-  const extracted = await extractTextFromFile(file);
-  if (!extracted.trim()) {
-    throw new Error("We could not read enough text from that file.");
+  const extractedTexts = selectedFiles.length
+    ? await Promise.all(selectedFiles.map((file) => extractTextFromFile(file)))
+    : [];
+
+  const cleanedFileTexts = extractedTexts
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  if (!trimmed && !cleanedFileTexts.length) {
+    throw new Error("We could not read enough text from the selected files.");
   }
 
-  return extracted;
+  const textParts = [trimmed, ...cleanedFileTexts].filter(Boolean);
+
+  return {
+    text: textParts.join("\n\n"),
+    textParts
+  };
 };
 
 export const usePrepFlow = () => {
@@ -47,9 +57,9 @@ export const usePrepFlow = () => {
   const [difficulty, setDifficulty] = useState("medium");
   const [questionCount, setQuestionCount] = useState(DEFAULT_QUESTION_COUNT);
   const [form, setForm] = useState({
-    pyqFile: null,
+    pyqFiles: [],
     pyqText: "",
-    syllabusFile: null,
+    syllabusFiles: [],
     syllabusText: "",
     topicsText: ""
   });
@@ -68,21 +78,21 @@ export const usePrepFlow = () => {
       setError("");
 
       if (workflow === "pyq") {
-        const questionText = await getTextFromInput(
+        const questionInput = await getTextsFromInput(
           form.pyqText,
-          form.pyqFile,
-          "Upload a PYQ file or paste PYQ text."
+          form.pyqFiles,
+          "Upload one or more PYQ files, or paste PYQ text."
         );
 
         const analysis = await analyzePrep({
-          questionPapers: [questionText],
+          questionPapers: questionInput.textParts,
           difficulty,
           topK: Math.min(Math.max(Math.ceil(questionCount / 2), 5), 30)
         });
         const insights = await fetchInsights({
           topics: normalizeTopicPayload(analysis.mostImportantTopics).map((topic) => ({ name: topic.name, weight: topic.weight })),
           questionCount,
-          questionPapers: [questionText],
+          questionPapers: questionInput.textParts,
           workflow: "pyq"
         });
 
@@ -93,7 +103,7 @@ export const usePrepFlow = () => {
           meta: {
             workflow,
             title: "Important Questions from PYQ",
-            description: `Picked from repeated and most expected questions found in your submitted PYQs.`,
+            description: `Picked from the most repeated question patterns found in your submitted PYQs.`,
             questionCount
           }
         };
@@ -104,14 +114,14 @@ export const usePrepFlow = () => {
       }
 
       if (workflow === "syllabus") {
-        const syllabus = await getTextFromInput(
+        const syllabusInput = await getTextsFromInput(
           form.syllabusText,
-          form.syllabusFile,
-          "Upload a syllabus file or paste syllabus text."
+          form.syllabusFiles,
+          "Upload one or more syllabus files, or paste syllabus text."
         );
 
         const analysis = await analyzePrep({
-          syllabus,
+          syllabus: syllabusInput.text,
           difficulty
         });
         const topicPayload = normalizeTopicPayload(analysis.mostImportantTopics);

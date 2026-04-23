@@ -82,11 +82,11 @@ export default function HomePage() {
               {workflow === "pyq" && (
                 <>
                   <FileUploadField
-                    file={form.pyqFile}
-                    onChange={(file) => updateField("pyqFile", file)}
+                    files={form.pyqFiles}
+                    onChange={(files) => updateField("pyqFiles", files)}
                     accept=".pdf,image/*"
-                    title="Upload PYQ PDF or image"
-                    hint="Use a clean scan for better question extraction."
+                    title="Upload PYQ PDFs or images"
+                    hint="You can select multiple files. Use clean scans for better extraction."
                   />
                   <textarea
                     rows="8"
@@ -115,11 +115,11 @@ export default function HomePage() {
               {workflow === "syllabus" && (
                 <>
                   <FileUploadField
-                    file={form.syllabusFile}
-                    onChange={(file) => updateField("syllabusFile", file)}
+                    files={form.syllabusFiles}
+                    onChange={(files) => updateField("syllabusFiles", files)}
                     accept=".pdf,image/*"
-                    title="Upload syllabus image or PDF"
-                    hint="A phone photo, screenshot, or PDF all work."
+                    title="Upload syllabus images or PDFs"
+                    hint="You can select multiple files. Photo, screenshot, or PDF all work."
                   />
                   <textarea
                     rows="8"
