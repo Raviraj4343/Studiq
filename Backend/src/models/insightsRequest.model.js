@@ -7,7 +7,9 @@ export const insightsRequestSchema = z.object({
     name: z.string().min(2),
     weight: z.number().min(0).max(1)
   })).min(1),
-  questionCount: z.number().int().min(1).max(GENAI_LIMITS.MAX_QUESTIONS).default(GENAI_LIMITS.DEFAULT_QUESTION_COUNT)
+  questionCount: z.number().int().min(1).max(GENAI_LIMITS.MAX_QUESTIONS).default(GENAI_LIMITS.DEFAULT_QUESTION_COUNT),
+  questionPapers: z.array(z.string().min(1)).optional(),
+  workflow: z.enum(["pyq", "syllabus", "topics"]).optional()
 });
 
 export const playlistRequestSchema = z.object({

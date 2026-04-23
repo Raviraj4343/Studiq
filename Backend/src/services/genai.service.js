@@ -2,6 +2,7 @@ import axios from "axios";
 
 import { appConfig } from "../config/env.js";
 import { GENAI_LIMITS, GENAI_PROMPTS, GENAI_RESPONSE_TEMPLATE } from "../constants/genai.constants.js";
+import { buildPyqRevisionPlan, extractRepeatedQuestions } from "../utils/pyqQuestions.js";
 
 const formatTopics = (topics) => topics
   .slice(0, GENAI_LIMITS.MAX_TOPICS)
@@ -28,7 +29,25 @@ const parseResponseText = (text) => {
   }
 };
 
-export const generateInsights = async ({ topics, questionCount = GENAI_LIMITS.DEFAULT_QUESTION_COUNT }) => {
+export const generateInsights = async ({
+  topics,
+  questionCount = GENAI_LIMITS.DEFAULT_QUESTION_COUNT,
+  questionPapers,
+  workflow
+}) => {
+  if (workflow === "pyq" && questionPapers?.length) {
+    const extracted = extractRepeatedQuestions(questionPapers, questionCount);
+
+    return {
+      expectedQuestions: extracted.questions,
+      revisionPlan: buildPyqRevisionPlan(extracted.questions),
+      evidence: {
+        repeatedQuestionCount: extracted.repeatedQuestionCount,
+        totalQuestionCandidates: extracted.totalQuestionCandidates
+      }
+    };
+  }
+
   if (!topics?.length) {
     return { expectedQuestions: [], revisionPlan: "" };
   }
