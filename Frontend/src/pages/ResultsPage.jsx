@@ -58,6 +58,21 @@ export default function ResultsPage() {
             <StatCard icon={BookOpenText} label="Questions scanned" value={pyqEvidence?.totalQuestionCandidates || 0} />
           </section>
 
+          {!!pyqEvidence?.relatedQuestionGroupCount && (
+            <section className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <StatCard icon={ListChecks} label="Same-topic related groups" value={pyqEvidence.relatedQuestionGroupCount} />
+            </section>
+          )}
+
+          {!!pyqEvidence?.recommendedTopics?.length && (
+            <section className="mt-8 scroll-mt-24">
+              <h2 className="section-title">High-scoring topics to maximize marks</h2>
+              <div className="mt-4">
+                <TopicBadges topics={pyqEvidence.recommendedTopics.map((name) => ({ name }))} />
+              </div>
+            </section>
+          )}
+
           {!!result.insights && (
             <div className="mt-8">
               <InsightsSection insights={result.insights} mode="pyq" />

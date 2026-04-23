@@ -12,12 +12,14 @@ const sanitizeDisplayText = (value = "") => value
 
 const renderQuestionText = (question) => {
   if (typeof question === "string") {
-    return { text: sanitizeDisplayText(question), frequency: null };
+    return { text: sanitizeDisplayText(question), frequency: null, matchType: null, topic: null };
   }
 
   return {
     text: sanitizeDisplayText(question.text),
-    frequency: question.frequency ?? null
+    frequency: question.frequency ?? null,
+    matchType: question.matchType ?? null,
+    topic: sanitizeDisplayText(question.topic || "") || null
   };
 };
 
@@ -134,11 +136,23 @@ export default function InsightsSection({ insights, mode = "default" }) {
               <div key={`${item.text}-${index}`} className="rounded-xl border border-slate-800 bg-slate-900/70 px-4 py-3 text-sm text-slate-200">
                 <div className="flex items-start justify-between gap-4">
                   <p className="leading-6">{item.text}</p>
-                  {item.frequency ? (
-                    <span className="shrink-0 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-2 py-1 text-xs font-medium text-cyan-200">
-                      seen {item.frequency}x
-                    </span>
-                  ) : null}
+                  <div className="flex shrink-0 items-center gap-2">
+                    {item.matchType === "same-topic" && item.topic ? (
+                      <span className="rounded-lg border border-teal-500/30 bg-teal-500/10 px-2 py-1 text-xs font-medium text-teal-200">
+                        same topic: {item.topic}
+                      </span>
+                    ) : null}
+                    {item.matchType === "repeated" ? (
+                      <span className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-2 py-1 text-xs font-medium text-cyan-200">
+                        exact repeat
+                      </span>
+                    ) : null}
+                    {item.frequency ? (
+                      <span className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-2 py-1 text-xs font-medium text-cyan-200">
+                        seen {item.frequency}x
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             );
