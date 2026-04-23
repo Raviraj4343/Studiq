@@ -58,9 +58,10 @@ const persistStudySession = async (payload) => {
 export const generateStudyPlan = async (payload) => {
   const inputText = mergeInput(payload);
   const subjectType = detectSubjectType(inputText);
+  const requestedTopK = Number.isInteger(payload.topK) ? payload.topK : appConfig.topicLimit;
   const mlResult = await analyzeInputWithML({
     text: inputText,
-    topK: appConfig.topicLimit
+    topK: requestedTopK
   });
 
   const { profile, topics } = applyDifficultyProfile(mlResult.topics, payload.difficulty, subjectType);

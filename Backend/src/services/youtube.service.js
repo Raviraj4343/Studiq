@@ -8,7 +8,6 @@ import {
   VIDEO_SCORE_WEIGHTS,
   YOUTUBE_RANKING
 } from "../constants/youtube.constants.js";
-import { AppError } from "../utils/AppError.js";
 
 const parseDurationToMinutes = (duration) => {
   const match = duration?.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
@@ -151,16 +150,20 @@ export const getVideosForTopic = async (topic, maxResults) => {
       })
       .sort((a, b) => b.score - a.score)
       .slice(0, maxResults);
-  } catch (error) {
-    throw new AppError(error.response?.data?.error?.message || "Failed to fetch YouTube playlist", error.response?.status || 502);
+  } catch (_error) {
+    return [fallbackVideo(topic)];
   }
 };
 
 export const buildPlaylist = async (topics, maxVideosPerTopic) => {
+  const safeMaxVideosPerTopic = Number.isInteger(maxVideosPerTopic) && maxVideosPerTopic > 0
+    ? maxVideosPerTopic
+    : appConfig.youtubeMaxResults;
+
   const playlist = await Promise.all(topics.map(async (topic) => ({
     topic: topic.name,
     topicWeight: topic.weight ?? topic.adjustedScore ?? topic.score ?? 0,
-    videos: await getVideosForTopic(topic.name, maxVideosPerTopic)
+    videos: await getVideosForTopic(topic.name, safeMaxVideosPerTopic)
   })));
 
   return playlist.sort((a, b) => b.topicWeight - a.topicWeight);
