@@ -8,7 +8,8 @@ export const prepRequestSchema = z.object({
   syllabus: z.string().trim().max(API_LIMITS.INPUT_MAX_CHARS).optional(),
   topics: z.array(z.string().trim().min(API_LIMITS.MIN_TOPIC_NAME_LENGTH)).optional(),
   questionPapers: z.array(z.string().trim().max(API_LIMITS.INPUT_MAX_CHARS)).optional(),
-  difficulty: z.enum(DIFFICULTY_OPTIONS).default(DEFAULT_DIFFICULTY)
+  difficulty: z.enum(DIFFICULTY_OPTIONS).default(DEFAULT_DIFFICULTY),
+  topK: z.number().int().min(3).max(API_LIMITS.MAX_TOPIC_LIMIT).optional()
 }).superRefine((data, ctx) => {
   const hasAnyInput = Boolean(data.syllabus) || Boolean(data.topics?.length) || Boolean(data.questionPapers?.length);
 

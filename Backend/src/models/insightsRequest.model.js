@@ -1,10 +1,13 @@
 import { z } from "zod";
 
+import { GENAI_LIMITS } from "../constants/genai.constants.js";
+
 export const insightsRequestSchema = z.object({
   topics: z.array(z.object({
     name: z.string().min(2),
     weight: z.number().min(0).max(1)
-  })).min(1)
+  })).min(1),
+  questionCount: z.number().int().min(1).max(GENAI_LIMITS.MAX_QUESTIONS).default(GENAI_LIMITS.DEFAULT_QUESTION_COUNT)
 });
 
 export const playlistRequestSchema = z.object({
