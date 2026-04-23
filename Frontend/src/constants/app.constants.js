@@ -39,5 +39,6 @@ export const DIFFICULTY_PLAYLIST_SIZE = {
 
 export const SESSION_KEYS = {
   RESULTS: "studiq.latestResults",
-  THEME: "studiq.theme"
+  THEME: "studiq.theme",
+  PLAYLIST_SUBJECT: "studiq.playlistSubject"
 };
