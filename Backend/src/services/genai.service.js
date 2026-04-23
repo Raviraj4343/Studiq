@@ -43,6 +43,8 @@ export const generateInsights = async ({
       revisionPlan: buildPyqRevisionPlan(extracted.questions),
       evidence: {
         repeatedQuestionCount: extracted.repeatedQuestionCount,
+        relatedQuestionGroupCount: extracted.relatedQuestionGroupCount,
+        recommendedTopics: extracted.recommendedTopics,
         totalQuestionCandidates: extracted.totalQuestionCandidates
       }
     };

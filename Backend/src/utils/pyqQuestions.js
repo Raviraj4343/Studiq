@@ -12,6 +12,12 @@ const QUESTION_LEADERS = [
   "mention", "write", "list", "justify", "examine", "illustrate", "elaborate"
 ];
 
+const TOPIC_NOISE_TOKENS = new Set([
+  "india", "indian", "brief", "manner", "answer", "question", "paper", "exam", "marks", "point",
+  "function", "role", "power", "procedure", "process", "discuss", "describe", "explain", "define",
+  "list", "mention", "write", "state", "compare", "analyse", "analyze", "evaluate", "short"
+]);
+
 const BOILERPLATE_PATTERNS = [
   /question\s+paper\s+contains/i,
   /attempt\s+all\s+questions/i,
@@ -103,12 +109,34 @@ const normalizeToken = (token) => {
   return cleaned;
 };
 
+const titleCase = (value) => value
+  .split(/\s+/)
+  .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+  .join(" ");
+
 const tokenSet = (question) => new Set(
   question
     .split(/\s+/)
     .map(normalizeToken)
     .filter(Boolean)
 );
+
+const topicTokenSet = (question) => new Set(
+  question
+    .split(/\s+/)
+    .map(normalizeToken)
+    .filter((token) => token && token.length >= 4 && !TOPIC_NOISE_TOKENS.has(token))
+);
+
+const intersectionCount = (left, right) => {
+  let count = 0;
+  for (const token of left) {
+    if (right.has(token)) {
+      count += 1;
+    }
+  }
+  return count;
+};
 
 const jaccardSimilarity = (left, right) => {
   if (!left.size || !right.size) {
@@ -162,6 +190,73 @@ const clusterQuestions = (questions) => {
   return clusters.sort((a, b) => b.count - a.count || b.representative.length - a.representative.length);
 };
 
+const deriveTopicLabel = (topicKeywords) => {
+  const topTokens = [...topicKeywords.entries()]
+    .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)
+    .slice(0, 2)
+    .map(([token]) => token);
+
+  if (!topTokens.length) {
+    return "High-yield topic";
+  }
+
+  return titleCase(topTokens.join(" "));
+};
+
+const clusterRelatedQuestions = (questions) => {
+  const clusters = [];
+
+  for (const question of questions) {
+    const tokens = tokenSet(question);
+    const topicTokens = topicTokenSet(question);
+    let bestCluster = null;
+    let bestScore = 0;
+
+    for (const cluster of clusters) {
+      const lexicalScore = jaccardSimilarity(tokens, cluster.tokens);
+      const topicOverlap = intersectionCount(topicTokens, cluster.topicTokens);
+      const combinedScore = lexicalScore + topicOverlap * 0.18;
+      const isRelated = lexicalScore >= 0.22 || topicOverlap >= 2 || (topicOverlap >= 1 && lexicalScore >= 0.12);
+
+      if (isRelated && combinedScore > bestScore) {
+        bestScore = combinedScore;
+        bestCluster = cluster;
+      }
+    }
+
+    if (bestCluster) {
+      bestCluster.questions.push(question);
+      bestCluster.count += 1;
+      bestCluster.tokens = new Set([...bestCluster.tokens, ...tokens]);
+      bestCluster.topicTokens = new Set([...bestCluster.topicTokens, ...topicTokens]);
+      for (const token of topicTokens) {
+        bestCluster.topicKeywords.set(token, (bestCluster.topicKeywords.get(token) || 0) + 1);
+      }
+
+      if (question.length > bestCluster.representative.length) {
+        bestCluster.representative = question;
+      }
+      continue;
+    }
+
+    const topicKeywords = new Map();
+    for (const token of topicTokens) {
+      topicKeywords.set(token, 1);
+    }
+
+    clusters.push({
+      representative: question,
+      questions: [question],
+      count: 1,
+      tokens,
+      topicTokens,
+      topicKeywords
+    });
+  }
+
+  return clusters.sort((a, b) => b.count - a.count || b.representative.length - a.representative.length);
+};
+
 export const extractRepeatedQuestions = (questionPapers, questionCount) => {
   const rawText = questionPapers?.join("\n\n") || "";
   const candidates = splitIntoCandidates(rawText);
@@ -170,21 +265,86 @@ export const extractRepeatedQuestions = (questionPapers, questionCount) => {
     return {
       questions: [],
       repeatedQuestionCount: 0,
+      relatedQuestionGroupCount: 0,
+      recommendedTopics: [],
       totalQuestionCandidates: 0
     };
   }
 
-  const clusters = clusterQuestions(candidates);
-  const repeatedClusters = clusters.filter((cluster) => cluster.count > 1);
-  const rankedClusters = repeatedClusters.slice(0, questionCount);
+  const repeatedClusters = clusterQuestions(candidates).filter((cluster) => cluster.count > 1);
+  const relatedClusters = clusterRelatedQuestions(candidates).filter((cluster) => cluster.count > 1);
+
+  const repeatedItems = repeatedClusters.map((cluster) => ({
+    text: sanitizeDisplayText(cluster.representative),
+    frequency: cluster.count,
+    matchType: "repeated",
+    topic: null,
+    rankScore: cluster.count * 2.2
+  }));
+
+  const repeatedTextSet = new Set(repeatedItems.map((item) => item.text));
+
+  const relatedItems = relatedClusters.map((cluster) => {
+    const candidateTexts = cluster.questions
+      .map((question) => sanitizeDisplayText(question))
+      .filter(Boolean);
+    const preferredText = candidateTexts.find((text) => !repeatedTextSet.has(text))
+      || sanitizeDisplayText(cluster.representative);
+
+    return {
+      text: preferredText,
+      frequency: cluster.count,
+      matchType: "same-topic",
+      topic: deriveTopicLabel(cluster.topicKeywords),
+      rankScore: cluster.count * 1.6 + Math.min(cluster.topicKeywords.size, 4) * 0.35
+    };
+  });
+
+  const selected = [];
+  const seenTexts = new Set();
+
+  const pushItem = (item) => {
+    if (!item.text || seenTexts.has(item.text) || selected.length >= questionCount) {
+      return;
+    }
+    seenTexts.add(item.text);
+    selected.push(item);
+  };
+
+  repeatedItems.forEach(pushItem);
+
+  const rankedRelated = relatedItems
+    .filter((item) => !seenTexts.has(item.text))
+    .sort((a, b) => b.rankScore - a.rankScore || b.text.length - a.text.length);
+
+  rankedRelated.forEach(pushItem);
+
+  const rankedMixed = [...selected].sort((a, b) => b.rankScore - a.rankScore || b.frequency - a.frequency);
+
+  const topicScoreMap = new Map();
+  for (const cluster of relatedClusters) {
+    for (const [token, score] of cluster.topicKeywords.entries()) {
+      topicScoreMap.set(token, (topicScoreMap.get(token) || 0) + score);
+    }
+  }
+
+  const recommendedTopics = [...topicScoreMap.entries()]
+    .filter(([token, score]) => token.length >= 4 && score >= 2)
+    .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)
+    .slice(0, Math.min(8, questionCount))
+    .map(([token]) => titleCase(token));
 
   return {
-    questions: rankedClusters.map((cluster, index) => ({
+    questions: rankedMixed.map((item, index) => ({
       id: `q-${index + 1}`,
-      text: sanitizeDisplayText(cluster.representative),
-      frequency: cluster.count
+      text: item.text,
+      frequency: item.frequency,
+      matchType: item.matchType,
+      topic: item.topic
     })),
     repeatedQuestionCount: repeatedClusters.length,
+    relatedQuestionGroupCount: relatedClusters.length,
+    recommendedTopics,
     totalQuestionCandidates: candidates.length
   };
 };
