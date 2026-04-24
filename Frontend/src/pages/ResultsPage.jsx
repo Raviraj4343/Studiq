@@ -36,6 +36,7 @@ const extractVideoId = (url = "") => {
 const buildCombinedPlaylistUrl = (playlist = []) => {
   const videoIds = playlist
     .flatMap((entry) => entry.videos || [])
+    .filter((video) => !video.isFallbackSearch)
     .map((video) => extractVideoId(video.url))
     .filter(Boolean);
 
@@ -46,18 +47,6 @@ const buildCombinedPlaylistUrl = (playlist = []) => {
   }
 
   return `https://www.youtube.com/watch_videos?video_ids=${uniqueVideoIds.join(",")}`;
-};
-
-const buildCombinedSearchUrl = (topics = [], subjectName = "") => {
-  const query = [...topics, subjectName, "lecture tutorial"]
-    .filter(Boolean)
-    .join(" ");
-
-  if (!query.trim()) {
-    return "";
-  }
-
-  return `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
 };
 
 export default function ResultsPage() {
@@ -74,9 +63,8 @@ export default function ResultsPage() {
   const isPlaylistWorkflow = result.meta?.workflow === "syllabus" || result.meta?.workflow === "topics";
   const pyqEvidence = result.insights?.evidence;
   const exactTopics = Array.isArray(result.meta?.explicitTopics) ? result.meta.explicitTopics : [];
-  const combinedPlaylistUrl = isPlaylistWorkflow
-    ? (buildCombinedPlaylistUrl(result.playlist) || buildCombinedSearchUrl(exactTopics, result.meta?.subjectName || ""))
-    : "";
+  const combinedPlaylistUrl = isPlaylistWorkflow ? buildCombinedPlaylistUrl(result.playlist) : "";
+  const hasCombinedPlaylistUrl = Boolean(combinedPlaylistUrl);
   const displayTopics = isPlaylistWorkflow && exactTopics.length
     ? exactTopics.map((name) => ({ name }))
     : result.mostImportantTopics.slice(0, 10);
@@ -107,7 +95,7 @@ export default function ResultsPage() {
         </Link>
       </div>
 
-      {isPlaylistWorkflow && combinedPlaylistUrl && (
+      {isPlaylistWorkflow && (
         <section className="mt-6 rounded-2xl border border-cyan-500/20 bg-slate-900/80 p-5 shadow-soft">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="max-w-3xl">
@@ -119,7 +107,9 @@ export default function ResultsPage() {
                 <div>
                   <h2 className="text-lg font-semibold text-white">Open all selected videos as one YouTube playlist view</h2>
                   <p className="mt-1 text-sm text-slate-400">
-                    Use this link to open the full combined queue, or copy it and share it anywhere.
+                    {hasCombinedPlaylistUrl
+                      ? "Use this link to open the full combined queue, or copy it and share it anywhere."
+                      : "The combined playlist link will appear here once real playlist videos are available."}
                   </p>
                 </div>
               </div>
@@ -127,15 +117,26 @@ export default function ResultsPage() {
 
             <div className="flex flex-wrap gap-3">
               <a
-                href={combinedPlaylistUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="primary-button"
+                href={hasCombinedPlaylistUrl ? combinedPlaylistUrl : undefined}
+                target={hasCombinedPlaylistUrl ? "_blank" : undefined}
+                rel={hasCombinedPlaylistUrl ? "noreferrer" : undefined}
+                aria-disabled={!hasCombinedPlaylistUrl}
+                onClick={(event) => {
+                  if (!hasCombinedPlaylistUrl) {
+                    event.preventDefault();
+                  }
+                }}
+                className={`primary-button ${!hasCombinedPlaylistUrl ? "pointer-events-none opacity-60" : ""}`}
               >
                 Open playlist
                 <ExternalLink className="h-4 w-4" />
               </a>
-              <button type="button" onClick={copyCombinedPlaylistUrl} className="secondary-button">
+              <button
+                type="button"
+                onClick={copyCombinedPlaylistUrl}
+                disabled={!hasCombinedPlaylistUrl}
+                className="secondary-button disabled:cursor-not-allowed disabled:opacity-60"
+              >
                 {isCopied ? "Copied" : "Copy link"}
                 <Copy className="h-4 w-4" />
               </button>

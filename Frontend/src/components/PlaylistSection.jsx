@@ -1,4 +1,4 @@
-import { Clock3, ThumbsUp, Video } from "lucide-react";
+import { Clock3, Eye, ThumbsUp, Video } from "lucide-react";
 
 const formatCount = (value) => new Intl.NumberFormat("en-US", { notation: "compact" }).format(value || 0);
 
@@ -46,6 +46,10 @@ export default function PlaylistSection({ playlist }) {
                     <span className="inline-flex items-center gap-1">
                       <ThumbsUp className="h-4 w-4" />
                       {formatCount(video.likes)}
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <Eye className="h-4 w-4" />
+                      {formatCount(video.views)}
                     </span>
                     <span>Score {video.score}</span>
                   </div>
