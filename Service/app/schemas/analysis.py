@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 
 
 class AnalyzeRequest(BaseModel):
-    text: str = Field(min_length=10, max_length=100000)
+    text: str = Field(min_length=3, max_length=100000)
     topK: int = Field(default=10, ge=3, le=50)
 
 
