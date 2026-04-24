@@ -1,7 +1,6 @@
 import axios from "axios";
 
 import { appConfig } from "../config/env.js";
-import { AppError } from "../utils/AppError.js";
 import {
   YOUTUBE_API,
   YOUTUBE_QUERY_SUFFIX,
@@ -88,31 +87,6 @@ const normalizeSubjectName = (subjectName) => (subjectName || "")
   .replace(/[^a-z0-9\s]/g, " ")
   .replace(/\s+/g, " ")
   .trim();
-
-const buildExactSearchUrl = (topic, subjectName) => {
-  const normalizedSubject = normalizeSubjectName(subjectName);
-  const searchQuery = [`"${topic}"`, normalizedSubject, "lecture tutorial"]
-    .filter(Boolean)
-    .join(" ");
-
-  return `https://www.youtube.com/results?search_query=${encodeURIComponent(searchQuery)}`;
-};
-
-const buildFallbackSearchVideo = (topic, subjectName, reason = "search") => ({
-  videoId: "",
-  title: `${topic} - Exact topic search`,
-  description: `Fallback ${reason} result for exact topic lookup.`,
-  channelTitle: "YouTube Search",
-  url: buildExactSearchUrl(topic, subjectName),
-  duration: "Search",
-  durationMinutes: 0,
-  views: 0,
-  likes: 0,
-  topicTag: topic,
-  relevance: 1,
-  score: 0.5,
-  isFallbackSearch: true
-});
 
 const buildTopicQueries = (topic, subjectName) => {
   const normalized = normalizeTopicName(topic);
@@ -327,7 +301,7 @@ const fetchVideoDetails = async (videoIds) => {
 
 export const getVideosForTopic = async (topic, maxResults, subjectName) => {
   if (!appConfig.youtubeApiKey) {
-    return [buildFallbackSearchVideo(topic, subjectName, "missing-api-key")];
+    throw new Error("YouTube API key is missing. Add YOUTUBE_API_KEY to generate a real playlist.");
   }
 
   try {
@@ -359,7 +333,7 @@ export const getVideosForTopic = async (topic, maxResults, subjectName) => {
 
     const uniqueVideos = dedupeVideos(rawVideos).filter((video) => isTopicRelevant(topic, video, subjectName));
     if (!uniqueVideos.length) {
-      return [buildFallbackSearchVideo(topic, subjectName, "no-strong-match")];
+      return [];
     }
 
     const maxViews = Math.max(...uniqueVideos.map((video) => video.views), 0);
@@ -384,11 +358,18 @@ export const getVideosForTopic = async (topic, maxResults, subjectName) => {
       .sort((a, b) => b.score - a.score)
       .slice(0, maxResults);
 
-    return rankedVideos.length
-      ? rankedVideos
-      : [buildFallbackSearchVideo(topic, subjectName, "low-confidence-match")];
+    return rankedVideos;
   } catch (error) {
-    return [buildFallbackSearchVideo(topic, subjectName, error.response?.status === 403 ? "quota-exceeded" : "network-failure")];
+    const quotaMessage = error.response?.data?.error?.message;
+    if (error.response?.status === 403 && quotaMessage) {
+      throw new Error(`YouTube API quota exceeded. ${quotaMessage}`);
+    }
+
+    throw new Error(
+      error.response?.data?.error?.message ||
+      error.message ||
+      "YouTube playlist generation failed. Check API access and network connectivity."
+    );
   }
 };
 
@@ -406,6 +387,10 @@ export const buildPlaylist = async (topics, maxVideosPerTopic, subjectName) => {
   const filteredPlaylist = playlist
     .filter((entry) => Array.isArray(entry.videos) && entry.videos.length > 0)
     .sort((a, b) => b.topicWeight - a.topicWeight);
+
+  if (!filteredPlaylist.length) {
+    throw new Error("No real topic-matched YouTube videos were found for the provided topics.");
+  }
 
   return filteredPlaylist;
 };
