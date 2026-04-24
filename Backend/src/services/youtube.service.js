@@ -10,8 +10,47 @@ import {
 } from "../constants/youtube.constants.js";
 
 const TOPIC_TOKEN_STOPWORDS = new Set([
-  "and", "for", "with", "the", "from", "into", "using", "based", "introduction", "intro"
+  "and", "for", "with", "the", "from", "into", "using", "based", "introduction", "intro", "unit", "module", "chapter"
 ]);
+
+const NON_EDUCATIONAL_KEYWORDS = [
+  "shorts",
+  "short",
+  "song",
+  "music",
+  "lyrics",
+  "movie",
+  "trailer",
+  "reaction",
+  "meme",
+  "status",
+  "vlog",
+  "podcast",
+  "gaming",
+  "gameplay",
+  "edit",
+  "fanmade",
+  "motivation",
+  "motivational",
+  "interview",
+  "news",
+  "web series"
+];
+
+const EDUCATIONAL_HINTS = [
+  "lecture",
+  "tutorial",
+  "explained",
+  "course",
+  "class",
+  "training",
+  "lesson",
+  "problem",
+  "questions",
+  "exam",
+  "university",
+  "college"
+];
 
 const normalizeTopicName = (topic) => topic
   .toLowerCase()
@@ -23,6 +62,23 @@ const tokenizeTopic = (topic) => normalizeTopicName(topic)
   .split(" ")
   .map((token) => token.trim())
   .filter((token) => token && token.length >= 3 && !TOPIC_TOKEN_STOPWORDS.has(token));
+
+const getTopicAcronym = (topic) => {
+  const tokens = normalizeTopicName(topic).split(" ").filter(Boolean);
+  if (!tokens.length) {
+    return "";
+  }
+
+  if (tokens.length === 1 && /^[a-z0-9]+$/i.test(tokens[0])) {
+    return tokens[0];
+  }
+
+  return tokens.map((token) => token[0]).join("");
+};
+
+const tokenizeSubjectName = (subjectName) => normalizeSubjectName(subjectName)
+  .split(" ")
+  .filter((token) => token.length >= 3 && !TOPIC_TOKEN_STOPWORDS.has(token));
 
 const normalizeSubjectName = (subjectName) => (subjectName || "")
   .toLowerCase()
@@ -47,9 +103,10 @@ const buildTopicQueries = (topic, subjectName) => {
   const withSubject = normalizedSubject ? `${queryTopic} ${normalizedSubject}` : queryTopic;
 
   const queries = [
-    `"${queryTopic}" ${normalizedSubject} ${YOUTUBE_QUERY_SUFFIX}`.trim(),
-    `${withSubject} complete lecture exam prep`,
-    `${withSubject} ${YOUTUBE_QUERY_SUFFIX}`
+    `"${queryTopic}" ${normalizedSubject} lecture tutorial`.trim(),
+    `${withSubject} exam lecture tutorial solved`.trim(),
+    `${withSubject} university lecture`.trim(),
+    `${withSubject} ${YOUTUBE_QUERY_SUFFIX}`.trim()
   ];
 
   return [...new Set(queries)];
@@ -80,6 +137,7 @@ const normalizeMetric = (value, maxValue) => {
 const computeTopicCoverage = (topic, video) => {
   const tokens = tokenizeTopic(topic);
   const normalizedTopic = normalizeTopicName(topic);
+  const acronym = getTopicAcronym(topic);
   const title = (video.title || "").toLowerCase();
   const description = (video.description || "").toLowerCase();
   const haystack = `${title} ${description}`;
@@ -99,17 +157,50 @@ const computeTopicCoverage = (topic, video) => {
 
   return {
     exactPhraseMatch: normalizedTopic.length >= 3 && haystack.includes(normalizedTopic),
+    exactTitleMatch: normalizedTopic.length >= 3 && title.includes(normalizedTopic),
+    acronymTitleMatch: acronym.length >= 2 && new RegExp(`(^|\\W)${acronym.toLowerCase()}(\\W|$)`).test(title),
     tokenCoverage: uniqueMatchedTokens / tokens.length,
     titleCoverage: titleMatches / tokens.length,
     descriptionCoverage: descriptionMatches / tokens.length
   };
 };
 
-const isTopicRelevant = (topic, video) => {
+const computeSubjectCoverage = (subjectName, video) => {
+  const tokens = tokenizeSubjectName(subjectName);
+  if (!tokens.length) {
+    return 0;
+  }
+
+  const haystack = `${(video.title || "").toLowerCase()} ${(video.description || "").toLowerCase()}`;
+  const matches = tokens.filter((token) => haystack.includes(token)).length;
+
+  return matches / tokens.length;
+};
+
+const hasNonEducationalSignals = (video) => {
+  const haystack = `${(video.title || "").toLowerCase()} ${(video.description || "").toLowerCase()}`;
+  return NON_EDUCATIONAL_KEYWORDS.some((keyword) => haystack.includes(keyword));
+};
+
+const hasEducationalSignals = (video) => {
+  const haystack = `${(video.title || "").toLowerCase()} ${(video.description || "").toLowerCase()}`;
+  return EDUCATIONAL_HINTS.some((keyword) => haystack.includes(keyword));
+};
+
+const isTopicRelevant = (topic, video, subjectName) => {
   const tokens = tokenizeTopic(topic);
   const coverage = computeTopicCoverage(topic, video);
+  const subjectCoverage = computeSubjectCoverage(subjectName, video);
 
-  if (coverage.exactPhraseMatch) {
+  if (hasNonEducationalSignals(video)) {
+    return false;
+  }
+
+  if (coverage.exactTitleMatch || coverage.acronymTitleMatch) {
+    return true;
+  }
+
+  if (coverage.exactPhraseMatch && (subjectCoverage >= 0.34 || hasEducationalSignals(video))) {
     return true;
   }
 
@@ -118,24 +209,36 @@ const isTopicRelevant = (topic, video) => {
   }
 
   if (tokens.length === 1) {
-    return coverage.titleCoverage >= 1 || coverage.descriptionCoverage >= 1;
+    return coverage.titleCoverage >= 1 && (subjectCoverage >= 0.34 || hasEducationalSignals(video));
   }
 
-  return coverage.titleCoverage >= 0.5 || coverage.tokenCoverage >= 0.6;
+  return (
+    coverage.titleCoverage >= 0.75 ||
+    (coverage.titleCoverage >= 0.5 && coverage.tokenCoverage >= 0.8) ||
+    (coverage.tokenCoverage >= 0.85 && (subjectCoverage >= 0.34 || hasEducationalSignals(video)))
+  );
 };
 
-const scoreRelevance = (topic, video) => {
+const scoreRelevance = (topic, video, subjectName) => {
   const {
     exactPhraseMatch,
+    exactTitleMatch,
+    acronymTitleMatch,
     tokenCoverage,
     titleCoverage,
     descriptionCoverage
   } = computeTopicCoverage(topic, video);
+  const subjectCoverage = computeSubjectCoverage(subjectName, video);
+  const educationalSignal = hasEducationalSignals(video) ? 1 : 0;
   const baseScore = (
-    titleCoverage * 0.55 +
-    descriptionCoverage * 0.2 +
-    tokenCoverage * 0.15 +
-    (exactPhraseMatch ? 0.1 : 0)
+    titleCoverage * 0.45 +
+    descriptionCoverage * 0.08 +
+    tokenCoverage * 0.2 +
+    subjectCoverage * 0.12 +
+    (exactPhraseMatch ? 0.05 : 0) +
+    (exactTitleMatch ? 0.07 : 0) +
+    (acronymTitleMatch ? 0.05 : 0) +
+    educationalSignal * 0.03
   );
   const durationBonus = video.durationMinutes >= VIDEO_DURATION_PREFERENCE.minMinutes &&
     video.durationMinutes <= VIDEO_DURATION_PREFERENCE.maxMinutes ? 1 : 0.4;
@@ -160,10 +263,10 @@ const dedupeVideos = (videos) => {
 };
 
 const fallbackVideo = (topic, subjectName) => ({
-  title: `${topic} - Suggested learning search`,
+  title: `${topic} - Search for exact learning videos`,
   channelTitle: "YouTube Search",
   url: `https://www.youtube.com/results?search_query=${encodeURIComponent(`${topic} ${subjectName || ""} ${YOUTUBE_QUERY_SUFFIX}`.trim())}`,
-  duration: "Search",
+  duration: "Search only",
   durationMinutes: 0,
   views: 0,
   likes: 0,
@@ -238,7 +341,7 @@ export const getVideosForTopic = async (topic, maxResults, subjectName) => {
       };
     });
 
-    const uniqueVideos = dedupeVideos(rawVideos).filter((video) => isTopicRelevant(topic, video));
+    const uniqueVideos = dedupeVideos(rawVideos).filter((video) => isTopicRelevant(topic, video, subjectName));
     if (!uniqueVideos.length) {
       return [fallbackVideo(topic, subjectName)];
     }
@@ -248,7 +351,7 @@ export const getVideosForTopic = async (topic, maxResults, subjectName) => {
 
     return uniqueVideos
       .map((video) => {
-        const relevance = scoreRelevance(topic, video);
+        const relevance = scoreRelevance(topic, video, subjectName);
         const score = (
           normalizeMetric(video.views, maxViews) * VIDEO_SCORE_WEIGHTS.views +
           normalizeMetric(video.likes, maxLikes) * VIDEO_SCORE_WEIGHTS.likes +

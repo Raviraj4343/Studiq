@@ -4,6 +4,8 @@ import { analyzeInputWithML } from "./ml.service.js";
 import { applyDifficultyProfile, detectSubjectType } from "./difficulty.service.js";
 import { StudySession } from "../models/mongo/studySession.model.js";
 
+const MIN_ML_INPUT_LENGTH = 3;
+
 export const mergeInput = ({ syllabus, topics, questionPapers }) => {
   const textParts = [];
 
@@ -21,6 +23,36 @@ export const mergeInput = ({ syllabus, topics, questionPapers }) => {
 };
 
 const roundValue = (value) => Number(value.toFixed(APP_LIMITS.CHART_DECIMALS));
+
+const normalizeTopicName = (value) => value
+  .trim()
+  .replace(/\s+/g, " ");
+
+const buildFallbackTopics = (topics = []) => {
+  const normalizedTopics = [...new Set(
+    topics
+      .map((topic) => normalizeTopicName(String(topic || "")))
+      .filter((topic) => topic.length >= APP_LIMITS.MIN_TOPIC_NAME_LENGTH)
+  )];
+
+  if (!normalizedTopics.length) {
+    return [];
+  }
+
+  const maxRank = Math.max(normalizedTopics.length - 1, 1);
+
+  return normalizedTopics.map((name, index) => {
+    const score = roundValue(Math.max(1 - (index / maxRank) * 0.35, 0.65));
+
+    return {
+      name,
+      frequency: 1,
+      score,
+      adjustedScore: score,
+      priority: index < 2 ? "high" : index < 5 ? "medium" : "low"
+    };
+  });
+};
 
 const normalizeTopics = (topics) => {
   const maxScore = Math.max(...topics.map((topic) => topic.adjustedScore || topic.score), 1);
@@ -59,12 +91,27 @@ export const generateStudyPlan = async (payload) => {
   const inputText = mergeInput(payload);
   const subjectType = detectSubjectType(inputText);
   const requestedTopK = Number.isInteger(payload.topK) ? payload.topK : appConfig.topicLimit;
-  const mlResult = await analyzeInputWithML({
-    text: inputText,
-    topK: requestedTopK
-  });
+  const directTopics = buildFallbackTopics(payload.topics);
+  const canUseMl = inputText.trim().length >= MIN_ML_INPUT_LENGTH;
 
-  const { profile, topics } = applyDifficultyProfile(mlResult.topics, payload.difficulty, subjectType);
+  let rankedTopics = directTopics;
+
+  if (canUseMl) {
+    try {
+      const mlResult = await analyzeInputWithML({
+        text: inputText,
+        topK: requestedTopK
+      });
+
+      rankedTopics = mlResult.topics?.length ? mlResult.topics : directTopics;
+    } catch (error) {
+      if (!directTopics.length) {
+        throw error;
+      }
+    }
+  }
+
+  const { profile, topics } = applyDifficultyProfile(rankedTopics, payload.difficulty, subjectType);
   const weightedTopics = normalizeTopics(topics);
 
   return {
