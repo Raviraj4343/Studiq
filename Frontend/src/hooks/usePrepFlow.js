@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -109,6 +109,31 @@ const mergeTopicPayloadWithExtractedTopics = (topicPayload, extractedTopics) => 
   return merged;
 };
 
+const formatApiError = (requestError) => {
+  const responseData = requestError?.response?.data;
+  const meta = responseData?.meta;
+
+  if (typeof responseData?.message === "string" && meta && typeof meta === "object") {
+    const firstMessage = Object.values(meta)
+      .flat()
+      .find((value) => typeof value === "string" && value.trim());
+
+    if (firstMessage) {
+      return firstMessage;
+    }
+  }
+
+  if (typeof responseData?.message === "string") {
+    return responseData.message;
+  }
+
+  if (typeof requestError?.message === "string") {
+    return requestError.message;
+  }
+
+  return "Something went wrong.";
+};
+
 const normalizeTopicPayload = (topics) => topics.map((topic) => ({
   name: topic.name,
   weight: topic.weight,
@@ -145,28 +170,9 @@ const getTextsFromInput = async (text, files, emptyMessage) => {
   };
 };
 
-const requestPlaylistSubjectName = () => {
-  const previousValue = window.sessionStorage.getItem(SESSION_KEYS.PLAYLIST_SUBJECT) || "";
-  const entered = window.prompt(
-    "For a better playlist, please enter your full subject name (example: Data Structures and Algorithms):",
-    previousValue
-  );
-
-  if (entered === null) {
-    throw new Error("Subject name is required to generate a better playlist.");
-  }
-
-  const normalized = entered.trim().replace(/\s+/g, " ");
-  if (normalized.length < 3) {
-    throw new Error("Please enter a valid full subject name for better playlist generation.");
-  }
-
-  window.sessionStorage.setItem(SESSION_KEYS.PLAYLIST_SUBJECT, normalized);
-  return normalized;
-};
-
 export const usePrepFlow = () => {
   const navigate = useNavigate();
+  const subjectPromptHandlersRef = useRef(null);
   const [workflow, setWorkflow] = useState("pyq");
   const [difficulty, setDifficulty] = useState("medium");
   const [questionCount, setQuestionCount] = useState(DEFAULT_QUESTION_COUNT);
@@ -179,8 +185,64 @@ export const usePrepFlow = () => {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [subjectPrompt, setSubjectPrompt] = useState({
+    isOpen: false,
+    value: "",
+    error: "",
+    mode: "playlist"
+  });
 
   const topicPreview = useMemo(() => normalizeTopicList(form.topicsText), [form.topicsText]);
+
+  const requestPlaylistSubjectName = (mode) => new Promise((resolve, reject) => {
+    const previousValue = window.sessionStorage.getItem(SESSION_KEYS.PLAYLIST_SUBJECT) || "";
+    subjectPromptHandlersRef.current = { reject, resolve };
+    setSubjectPrompt({
+      isOpen: true,
+      value: previousValue,
+      error: "",
+      mode
+    });
+  });
+
+  const closeSubjectPrompt = () => {
+    subjectPromptHandlersRef.current = null;
+    setSubjectPrompt((current) => ({
+      ...current,
+      isOpen: false,
+      error: ""
+    }));
+  };
+
+  const updateSubjectPromptValue = (value) => {
+    setSubjectPrompt((current) => ({
+      ...current,
+      value,
+      error: ""
+    }));
+  };
+
+  const cancelSubjectPrompt = () => {
+    const handlers = subjectPromptHandlersRef.current;
+    closeSubjectPrompt();
+    handlers?.reject(new Error("Subject name is required to generate a better playlist."));
+  };
+
+  const confirmSubjectPrompt = () => {
+    const normalized = subjectPrompt.value.trim().replace(/\s+/g, " ");
+    if (normalized.length < 3) {
+      setSubjectPrompt((current) => ({
+        ...current,
+        error: "Please enter a valid full subject name so we can build a better playlist."
+      }));
+      return;
+    }
+
+    window.sessionStorage.setItem(SESSION_KEYS.PLAYLIST_SUBJECT, normalized);
+    const handlers = subjectPromptHandlersRef.current;
+    closeSubjectPrompt();
+    handlers?.resolve(normalized);
+  };
 
   const updateField = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -233,7 +295,7 @@ export const usePrepFlow = () => {
           form.syllabusFiles,
           "Upload one or more syllabus files, or paste syllabus text."
         );
-        const subjectName = requestPlaylistSubjectName();
+        const subjectName = await requestPlaylistSubjectName("syllabus");
 
         const analysis = await analyzePrep({
           syllabus: syllabusInput.text,
@@ -274,7 +336,7 @@ export const usePrepFlow = () => {
       if (!topics.length) {
         throw new Error("Enter at least one topic name.");
       }
-      const subjectName = requestPlaylistSubjectName();
+      const subjectName = await requestPlaylistSubjectName("topics");
 
       const analysis = await analyzePrep({
         topics,
@@ -302,7 +364,7 @@ export const usePrepFlow = () => {
       window.sessionStorage.setItem(SESSION_KEYS.RESULTS, JSON.stringify(result));
       navigate("/dashboard", { state: { result } });
     } catch (requestError) {
-      setError(requestError.response?.data?.message || requestError.message || "Something went wrong.");
+      setError(formatApiError(requestError));
     } finally {
       setIsSubmitting(false);
     }
@@ -318,7 +380,11 @@ export const usePrepFlow = () => {
     setQuestionCount,
     setWorkflow,
     submit,
+    subjectPrompt,
+    cancelSubjectPrompt,
+    confirmSubjectPrompt,
     topicPreview,
+    updateSubjectPromptValue,
     updateField,
     workflow
   };

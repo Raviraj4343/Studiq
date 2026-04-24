@@ -8,6 +8,7 @@ import {
 import DifficultySelector from "../components/DifficultySelector.jsx";
 import FileUploadField from "../components/FileUploadField.jsx";
 import ModeTabs from "../components/ModeTabs.jsx";
+import SubjectPromptModal from "../components/SubjectPromptModal.jsx";
 import {
   DEFAULT_QUESTION_COUNT,
   DIFFICULTY_OPTIONS,
@@ -32,7 +33,11 @@ export default function HomePage() {
     setQuestionCount,
     setWorkflow,
     submit,
+    subjectPrompt,
+    cancelSubjectPrompt,
+    confirmSubjectPrompt,
     topicPreview,
+    updateSubjectPromptValue,
     updateField,
     workflow
   } = usePrepFlow();
@@ -41,6 +46,16 @@ export default function HomePage() {
 
   return (
     <main className="mx-auto max-w-6xl px-6 py-10">
+      <SubjectPromptModal
+        isOpen={subjectPrompt.isOpen}
+        mode={subjectPrompt.mode}
+        value={subjectPrompt.value}
+        error={subjectPrompt.error}
+        onChange={updateSubjectPromptValue}
+        onCancel={cancelSubjectPrompt}
+        onConfirm={confirmSubjectPrompt}
+      />
+
       <section className="page-hero">
         <div className="max-w-3xl">
           <div className="eyebrow">Exam prep made simple</div>

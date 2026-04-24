@@ -1,4 +1,5 @@
-import { ArrowLeft, BarChart3, BookOpenText, ListChecks } from "lucide-react";
+import { ArrowLeft, BarChart3, BookOpenText, Copy, ExternalLink, ListChecks, ListVideo } from "lucide-react";
+import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 
 import ChartSection from "../components/ChartSection.jsx";
@@ -22,7 +23,33 @@ const StatCard = ({ icon: Icon, label, value }) => (
   </div>
 );
 
+const extractVideoId = (url = "") => {
+  try {
+    const parsedUrl = new URL(url);
+    const videoId = parsedUrl.searchParams.get("v");
+    return videoId || "";
+  } catch (_error) {
+    return "";
+  }
+};
+
+const buildCombinedPlaylistUrl = (playlist = []) => {
+  const videoIds = playlist
+    .flatMap((entry) => entry.videos || [])
+    .map((video) => extractVideoId(video.url))
+    .filter(Boolean);
+
+  const uniqueVideoIds = [...new Set(videoIds)];
+
+  if (!uniqueVideoIds.length) {
+    return "";
+  }
+
+  return `https://www.youtube.com/watch_videos?video_ids=${uniqueVideoIds.join(",")}`;
+};
+
 export default function ResultsPage() {
+  const [isCopied, setIsCopied] = useState(false);
   const location = useLocation();
   const fallbackResult = window.sessionStorage.getItem(SESSION_KEYS.RESULTS);
   const result = location.state?.result || (fallbackResult ? JSON.parse(fallbackResult) : null);
@@ -32,7 +59,19 @@ export default function ResultsPage() {
   }
 
   const isPyqWorkflow = result.meta?.workflow === "pyq";
+  const isPlaylistWorkflow = result.meta?.workflow === "syllabus" || result.meta?.workflow === "topics";
   const pyqEvidence = result.insights?.evidence;
+  const combinedPlaylistUrl = isPlaylistWorkflow ? buildCombinedPlaylistUrl(result.playlist) : "";
+
+  const copyCombinedPlaylistUrl = async () => {
+    if (!combinedPlaylistUrl || !navigator.clipboard?.writeText) {
+      return;
+    }
+
+    await navigator.clipboard.writeText(combinedPlaylistUrl);
+    setIsCopied(true);
+    window.setTimeout(() => setIsCopied(false), 1800);
+  };
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
@@ -49,6 +88,43 @@ export default function ResultsPage() {
           Back
         </Link>
       </div>
+
+      {isPlaylistWorkflow && combinedPlaylistUrl && (
+        <section className="mt-6 rounded-2xl border border-cyan-500/20 bg-slate-900/80 p-5 shadow-soft">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-3xl">
+              <div className="eyebrow">Combined playlist</div>
+              <div className="mt-3 flex items-center gap-3">
+                <div className="icon-chip">
+                  <ListVideo className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-white">Open all selected videos as one YouTube playlist view</h2>
+                  <p className="mt-1 text-sm text-slate-400">
+                    Use this link to open the full combined queue, or copy it and share it anywhere.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <a
+                href={combinedPlaylistUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="primary-button"
+              >
+                Open playlist
+                <ExternalLink className="h-4 w-4" />
+              </a>
+              <button type="button" onClick={copyCombinedPlaylistUrl} className="secondary-button">
+                {isCopied ? "Copied" : "Copy link"}
+                <Copy className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
 
       {isPyqWorkflow ? (
         <>
@@ -97,7 +173,6 @@ export default function ResultsPage() {
           <div className="mt-8 space-y-8">
             <ChartSection chartData={result.chartData} />
             {!!result.playlist?.length && <PlaylistSection playlist={result.playlist} />}
-            {!!result.insights && <InsightsSection insights={result.insights} />}
           </div>
         </>
       )}
