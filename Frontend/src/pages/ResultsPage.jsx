@@ -48,6 +48,18 @@ const buildCombinedPlaylistUrl = (playlist = []) => {
   return `https://www.youtube.com/watch_videos?video_ids=${uniqueVideoIds.join(",")}`;
 };
 
+const buildCombinedSearchUrl = (topics = [], subjectName = "") => {
+  const query = [...topics, subjectName, "lecture tutorial"]
+    .filter(Boolean)
+    .join(" ");
+
+  if (!query.trim()) {
+    return "";
+  }
+
+  return `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+};
+
 export default function ResultsPage() {
   const [isCopied, setIsCopied] = useState(false);
   const location = useLocation();
@@ -61,7 +73,13 @@ export default function ResultsPage() {
   const isPyqWorkflow = result.meta?.workflow === "pyq";
   const isPlaylistWorkflow = result.meta?.workflow === "syllabus" || result.meta?.workflow === "topics";
   const pyqEvidence = result.insights?.evidence;
-  const combinedPlaylistUrl = isPlaylistWorkflow ? buildCombinedPlaylistUrl(result.playlist) : "";
+  const exactTopics = Array.isArray(result.meta?.explicitTopics) ? result.meta.explicitTopics : [];
+  const combinedPlaylistUrl = isPlaylistWorkflow
+    ? (buildCombinedPlaylistUrl(result.playlist) || buildCombinedSearchUrl(exactTopics, result.meta?.subjectName || ""))
+    : "";
+  const displayTopics = isPlaylistWorkflow && exactTopics.length
+    ? exactTopics.map((name) => ({ name }))
+    : result.mostImportantTopics.slice(0, 10);
 
   const copyCombinedPlaylistUrl = async () => {
     if (!combinedPlaylistUrl || !navigator.clipboard?.writeText) {
@@ -164,9 +182,9 @@ export default function ResultsPage() {
           </section>
 
           <section className="mt-8 scroll-mt-24">
-            <h2 className="section-title">Top topics</h2>
+            <h2 className="section-title">Playlist topics</h2>
             <div className="mt-4">
-              <TopicBadges topics={result.mostImportantTopics.slice(0, 10)} />
+              <TopicBadges topics={displayTopics} />
             </div>
           </section>
 

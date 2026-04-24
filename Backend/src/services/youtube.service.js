@@ -1,6 +1,7 @@
 import axios from "axios";
 
 import { appConfig } from "../config/env.js";
+import { AppError } from "../utils/AppError.js";
 import {
   YOUTUBE_API,
   YOUTUBE_QUERY_SUFFIX,
@@ -87,6 +88,31 @@ const normalizeSubjectName = (subjectName) => (subjectName || "")
   .replace(/[^a-z0-9\s]/g, " ")
   .replace(/\s+/g, " ")
   .trim();
+
+const buildExactSearchUrl = (topic, subjectName) => {
+  const normalizedSubject = normalizeSubjectName(subjectName);
+  const searchQuery = [`"${topic}"`, normalizedSubject, "lecture tutorial"]
+    .filter(Boolean)
+    .join(" ");
+
+  return `https://www.youtube.com/results?search_query=${encodeURIComponent(searchQuery)}`;
+};
+
+const buildFallbackSearchVideo = (topic, subjectName, reason = "search") => ({
+  videoId: "",
+  title: `${topic} - Exact topic search`,
+  description: `Fallback ${reason} result for exact topic lookup.`,
+  channelTitle: "YouTube Search",
+  url: buildExactSearchUrl(topic, subjectName),
+  duration: "Search",
+  durationMinutes: 0,
+  views: 0,
+  likes: 0,
+  topicTag: topic,
+  relevance: 1,
+  score: 0.5,
+  isFallbackSearch: true
+});
 
 const buildTopicQueries = (topic, subjectName) => {
   const normalized = normalizeTopicName(topic);
@@ -301,7 +327,7 @@ const fetchVideoDetails = async (videoIds) => {
 
 export const getVideosForTopic = async (topic, maxResults, subjectName) => {
   if (!appConfig.youtubeApiKey) {
-    return [];
+    return [buildFallbackSearchVideo(topic, subjectName, "missing-api-key")];
   }
 
   try {
@@ -333,13 +359,13 @@ export const getVideosForTopic = async (topic, maxResults, subjectName) => {
 
     const uniqueVideos = dedupeVideos(rawVideos).filter((video) => isTopicRelevant(topic, video, subjectName));
     if (!uniqueVideos.length) {
-      return [];
+      return [buildFallbackSearchVideo(topic, subjectName, "no-strong-match")];
     }
 
     const maxViews = Math.max(...uniqueVideos.map((video) => video.views), 0);
     const maxLikes = Math.max(...uniqueVideos.map((video) => video.likes), 0);
 
-    return uniqueVideos
+    const rankedVideos = uniqueVideos
       .map((video) => {
         const relevance = scoreRelevance(topic, video, subjectName);
         const score = (
@@ -357,8 +383,12 @@ export const getVideosForTopic = async (topic, maxResults, subjectName) => {
       .filter((video) => video.relevance >= MIN_RELEVANCE_SCORE)
       .sort((a, b) => b.score - a.score)
       .slice(0, maxResults);
-  } catch (_error) {
-    return [];
+
+    return rankedVideos.length
+      ? rankedVideos
+      : [buildFallbackSearchVideo(topic, subjectName, "low-confidence-match")];
+  } catch (error) {
+    return [buildFallbackSearchVideo(topic, subjectName, error.response?.status === 403 ? "quota-exceeded" : "network-failure")];
   }
 };
 
@@ -373,7 +403,9 @@ export const buildPlaylist = async (topics, maxVideosPerTopic, subjectName) => {
     videos: await getVideosForTopic(topic.name, safeMaxVideosPerTopic, subjectName)
   })));
 
-  return playlist
+  const filteredPlaylist = playlist
     .filter((entry) => Array.isArray(entry.videos) && entry.videos.length > 0)
     .sort((a, b) => b.topicWeight - a.topicWeight);
+
+  return filteredPlaylist;
 };

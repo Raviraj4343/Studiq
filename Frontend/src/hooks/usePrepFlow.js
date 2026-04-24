@@ -86,27 +86,31 @@ const extractTopicsFromTextParts = (textParts, limit = 12) => {
   return extracted;
 };
 
-const mergeTopicPayloadWithExtractedTopics = (topicPayload, extractedTopics) => {
-  const merged = [...topicPayload];
-  const existing = new Set(topicPayload.map((topic) => normalizeTopicCandidate(topic.name)));
+const buildStrictPlaylistTopics = (explicitTopics, rankedTopics = []) => {
+  const rankedTopicMap = new Map(
+    rankedTopics.map((topic) => [normalizeTopicCandidate(topic.name), topic])
+  );
 
-  for (const topicName of extractedTopics) {
-    const normalized = normalizeTopicCandidate(topicName);
-    if (!normalized || existing.has(normalized)) {
-      continue;
-    }
+  const uniqueExplicitTopics = [...new Set(
+    explicitTopics
+      .map((topic) => topic.trim())
+      .filter(Boolean)
+  )];
 
-    existing.add(normalized);
-    merged.push({
+  const maxRank = Math.max(uniqueExplicitTopics.length - 1, 1);
+
+  return uniqueExplicitTopics.map((topicName, index) => {
+    const matchedRankedTopic = rankedTopicMap.get(normalizeTopicCandidate(topicName));
+    const fallbackWeight = Number((Math.max(1 - (index / maxRank) * 0.35, 0.65)).toFixed(3));
+
+    return {
       name: topicName,
-      weight: 0.25,
-      score: 0.25,
-      adjustedScore: 0.25,
-      priority: "medium"
-    });
-  }
-
-  return merged;
+      weight: matchedRankedTopic?.weight ?? fallbackWeight,
+      score: matchedRankedTopic?.score ?? fallbackWeight,
+      adjustedScore: matchedRankedTopic?.adjustedScore ?? fallbackWeight,
+      priority: matchedRankedTopic?.priority ?? (index < 2 ? "high" : index < 5 ? "medium" : "low")
+    };
+  });
 };
 
 const formatApiError = (requestError) => {
@@ -124,7 +128,10 @@ const formatApiError = (requestError) => {
   }
 
   if (typeof responseData?.message === "string") {
-    return responseData.message;
+    return responseData.message
+      .replace(/<a\b[^>]*>(.*?)<\/a>/gi, "$1")
+      .replace(/<\/?[^>]+>/g, "")
+      .trim();
   }
 
   if (typeof requestError?.message === "string") {
@@ -296,14 +303,18 @@ export const usePrepFlow = () => {
           "Upload one or more syllabus files, or paste syllabus text."
         );
         const subjectName = await requestPlaylistSubjectName("syllabus");
+        const extractedTopics = extractTopicsFromTextParts(syllabusInput.textParts, 12);
+
+        if (!extractedTopics.length) {
+          throw new Error("We could not detect clear topic names from the uploaded syllabus. Please upload a cleaner file or paste the topic list.");
+        }
 
         const analysis = await analyzePrep({
           syllabus: syllabusInput.text,
           difficulty
         });
         const topicPayload = normalizeTopicPayload(analysis.mostImportantTopics);
-        const extractedTopics = extractTopicsFromTextParts(syllabusInput.textParts, 12);
-        const playlistTopicPayload = mergeTopicPayloadWithExtractedTopics(topicPayload, extractedTopics);
+        const playlistTopicPayload = buildStrictPlaylistTopics(extractedTopics, topicPayload);
         const [playlist, insights] = await Promise.all([
           fetchPlaylist({
             topics: playlistTopicPayload,
@@ -323,7 +334,9 @@ export const usePrepFlow = () => {
           meta: {
             workflow,
             title: "Syllabus Playlist",
-            description: `Built from syllabus text with ${difficulty} difficulty videos.`
+            description: "Built only from the topics explicitly found in your uploaded syllabus content.",
+            explicitTopics: extractedTopics,
+            subjectName
           }
         };
 
@@ -344,8 +357,9 @@ export const usePrepFlow = () => {
         topK: Math.min(Math.max(topics.length, 3), 30)
       });
       const topicPayload = normalizeTopicPayload(analysis.mostImportantTopics);
+      const playlistTopicPayload = buildStrictPlaylistTopics(topics, topicPayload);
       const playlist = await fetchPlaylist({
-        topics: topicPayload,
+        topics: playlistTopicPayload,
         maxVideosPerTopic: DIFFICULTY_PLAYLIST_SIZE[difficulty],
         subjectName
       });
@@ -357,7 +371,9 @@ export const usePrepFlow = () => {
         meta: {
           workflow,
           title: "Topic Playlist",
-          description: `Playlist built from ${topics.length} topic names.`
+          description: "Playlist built only from the exact topic names you provided.",
+          explicitTopics: topics,
+          subjectName
         }
       };
 
