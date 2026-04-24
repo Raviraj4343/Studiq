@@ -52,6 +52,8 @@ const EDUCATIONAL_HINTS = [
   "college"
 ];
 
+const MIN_RELEVANCE_SCORE = 0.62;
+
 const normalizeTopicName = (topic) => topic
   .toLowerCase()
   .replace(/[^a-z0-9\s]/g, " ")
@@ -191,16 +193,17 @@ const isTopicRelevant = (topic, video, subjectName) => {
   const tokens = tokenizeTopic(topic);
   const coverage = computeTopicCoverage(topic, video);
   const subjectCoverage = computeSubjectCoverage(subjectName, video);
+  const hasSubject = tokenizeSubjectName(subjectName).length > 0;
 
   if (hasNonEducationalSignals(video)) {
     return false;
   }
 
-  if (coverage.exactTitleMatch || coverage.acronymTitleMatch) {
+  if ((coverage.exactTitleMatch || coverage.acronymTitleMatch) && (!hasSubject || subjectCoverage >= 0.2 || hasEducationalSignals(video))) {
     return true;
   }
 
-  if (coverage.exactPhraseMatch && (subjectCoverage >= 0.34 || hasEducationalSignals(video))) {
+  if (coverage.exactPhraseMatch && (!hasSubject || subjectCoverage >= 0.34 || hasEducationalSignals(video))) {
     return true;
   }
 
@@ -209,13 +212,13 @@ const isTopicRelevant = (topic, video, subjectName) => {
   }
 
   if (tokens.length === 1) {
-    return coverage.titleCoverage >= 1 && (subjectCoverage >= 0.34 || hasEducationalSignals(video));
+    return coverage.titleCoverage >= 1 && (!hasSubject || subjectCoverage >= 0.34 || hasEducationalSignals(video));
   }
 
   return (
-    coverage.titleCoverage >= 0.75 ||
-    (coverage.titleCoverage >= 0.5 && coverage.tokenCoverage >= 0.8) ||
-    (coverage.tokenCoverage >= 0.85 && (subjectCoverage >= 0.34 || hasEducationalSignals(video)))
+    (coverage.titleCoverage >= 0.75 && (!hasSubject || subjectCoverage >= 0.2 || hasEducationalSignals(video))) ||
+    (coverage.titleCoverage >= 0.5 && coverage.tokenCoverage >= 0.8 && (!hasSubject || subjectCoverage >= 0.34 || hasEducationalSignals(video))) ||
+    (coverage.tokenCoverage >= 0.85 && (!hasSubject || subjectCoverage >= 0.34 || hasEducationalSignals(video)))
   );
 };
 
@@ -262,19 +265,6 @@ const dedupeVideos = (videos) => {
   });
 };
 
-const fallbackVideo = (topic, subjectName) => ({
-  title: `${topic} - Search for exact learning videos`,
-  channelTitle: "YouTube Search",
-  url: `https://www.youtube.com/results?search_query=${encodeURIComponent(`${topic} ${subjectName || ""} ${YOUTUBE_QUERY_SUFFIX}`.trim())}`,
-  duration: "Search only",
-  durationMinutes: 0,
-  views: 0,
-  likes: 0,
-  relevance: 0.5,
-  score: 0.5,
-  topicTag: topic
-});
-
 const searchYouTubeVideos = async (query, maxResults) => {
   const { data } = await axios.get(YOUTUBE_API.SEARCH_URL, {
     params: {
@@ -311,7 +301,7 @@ const fetchVideoDetails = async (videoIds) => {
 
 export const getVideosForTopic = async (topic, maxResults, subjectName) => {
   if (!appConfig.youtubeApiKey) {
-    return [fallbackVideo(topic, subjectName)];
+    return [];
   }
 
   try {
@@ -343,7 +333,7 @@ export const getVideosForTopic = async (topic, maxResults, subjectName) => {
 
     const uniqueVideos = dedupeVideos(rawVideos).filter((video) => isTopicRelevant(topic, video, subjectName));
     if (!uniqueVideos.length) {
-      return [fallbackVideo(topic, subjectName)];
+      return [];
     }
 
     const maxViews = Math.max(...uniqueVideos.map((video) => video.views), 0);
@@ -364,10 +354,11 @@ export const getVideosForTopic = async (topic, maxResults, subjectName) => {
           score: Number(score.toFixed(3))
         };
       })
+      .filter((video) => video.relevance >= MIN_RELEVANCE_SCORE)
       .sort((a, b) => b.score - a.score)
       .slice(0, maxResults);
   } catch (_error) {
-    return [fallbackVideo(topic, subjectName)];
+    return [];
   }
 };
 
@@ -382,5 +373,7 @@ export const buildPlaylist = async (topics, maxVideosPerTopic, subjectName) => {
     videos: await getVideosForTopic(topic.name, safeMaxVideosPerTopic, subjectName)
   })));
 
-  return playlist.sort((a, b) => b.topicWeight - a.topicWeight);
+  return playlist
+    .filter((entry) => Array.isArray(entry.videos) && entry.videos.length > 0)
+    .sort((a, b) => b.topicWeight - a.topicWeight);
 };
